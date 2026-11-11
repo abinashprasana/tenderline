@@ -166,7 +166,9 @@ def test_inactive_searches_and_closed_notices_do_not_match(client, make_org):
     )
     past, _ = open_notice(title="Cloud expired", deadline="2020-01-01Z")
     assert match_notice(past) == []
-    assert len(match_notice(nid)) == 1
+    match_notice(nid)  # re-activation may already have backfilled this match (async): assert the end state
+    listed = client.get(f"/v1/organisations/{a['org_id']}/matches", headers=H(a["user_id"])).json()["items"]
+    assert [m["notice_id"] for m in listed] == [str(nid)]
 
 
 def test_match_filters(client, make_org):

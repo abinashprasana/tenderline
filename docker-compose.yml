@@ -3,6 +3,7 @@ name: tenderline
 x-app-env: &app-env
   ENV: ${ENV:-dev}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  OTEL_ENABLED: ${OTEL_ENABLED:-true}
   DATABASE_URL: postgresql+psycopg://tenderline:${POSTGRES_PASSWORD:-tenderline}@db:5432/tenderline
   APP_DATABASE_URL: postgresql+psycopg://tenderline_app:${APP_DB_PASSWORD:-tenderline_app}@db:5432/tenderline
   APP_DB_PASSWORD: ${APP_DB_PASSWORD:-tenderline_app}

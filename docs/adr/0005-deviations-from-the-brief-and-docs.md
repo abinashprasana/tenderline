@@ -1,0 +1,13 @@
+# ADR 0005: Where reality differed from the brief or from memory
+
+**Status:** accepted. Each point was checked against the live service or the installed package.
+
+- **TED query syntax.** `SORT BY publication-date ASC` is a syntax error; ascending is the default, descending is `SORT BY publication-date DESC`. Dates use `publication-date>=YYYYMMDD`; CPV wildcards use `classification-cpv=72*`. The brief says "scroll token"; the API names it `paginationMode: "ITERATION"` with `iterationNextToken`, max 250 notices per page.
+- **TED fair use.** Documented limit is 700 requests per minute. A burst of ~12 rapid requests from one IP still returned HTTP 429, so the client paces itself (default 60/min, refuses configuration above 600/min), honours `Retry-After` and backs off exponentially with full jitter.
+- **Field shapes** (recorded in `tests/fixtures/ted`): buyer name `{"eng": ["..."]}`, lot values as string lists with a parallel currency list, duplicated CPV codes, date-only deadlines like `2026-12-16Z` (stored as end of that day in UTC with `deadline_precision="date"`). Corrigenda: notices are versioned when the same publication number changes content, or when a new publication number shares the same `notice-identifier`. **Not verified:** how TED publishes corrigenda for each notice type.
+- **Awards** link to calls through `procedure-identifier`, shared by both notices.
+- **eTenders CSV** is Windows-1252, dates are `DD/MM/YYYY`, additional CPV codes are `;`-separated. Columns are detected from the header; the file is imported from a path and never downloaded by the app.
+- **SQLAlchemy is pinned below 2.1**: OpenTelemetry's SQLAlchemy instrumentation does not support 2.1, and we want database spans in traces.
+- **DBOS**: see ADR 0001 for the event-loop, `send` and executor-id findings.
+- **Histogram buckets.** The OpenTelemetry SDK default buckets assume milliseconds, which made a 24 ms p95 read as ~4.7 s in seconds-based metrics; explicit bucket boundaries are set for HTTP and LLM latency.
+- **Database defaults** for status/counter columns live in the database (migration 0004), not only in the ORM.

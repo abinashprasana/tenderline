@@ -104,6 +104,8 @@ def test_approve_executes_the_action_and_audits_it(env):
     opp = client.get(f"{base(a)}/opportunities/{done['result']['opportunity_id']}", headers=H(a["user_id"])).json()
     assert opp["notice_id"] == str(notice_id) and opp["status"] == "new" and opp["workflow_id"].startswith("opp-")
     assert [d["kind"] for d in opp["deadlines"]] == ["submission"]
+    listed = client.get(f"{base(a)}/opportunities?limit=50", headers=H(a["user_id"]))
+    assert listed.status_code == 200 and listed.json()["items"][0]["notice_title"] == opp["notice_title"]
     actions = audit_actions(a["org_id"])
     assert {"proposal.created", "proposal.approved", "proposal.executed", "opportunity.created"} <= set(actions)
     with owner_session() as s:
