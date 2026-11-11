@@ -1,0 +1,19 @@
+name: tenderline
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tenderline
+      POSTGRES_PASSWORD: tenderline
+      POSTGRES_DB: tenderline
+    ports: ["${DB_HOST_PORT:-5433}:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenderline -d tenderline"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  pgdata: {}
