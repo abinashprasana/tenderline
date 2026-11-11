@@ -238,3 +238,21 @@ def test_notice_detail_and_version_history(api):
     assert [x["version"] for x in v] == [1, 2] and v[1]["changes"]["title"]["new"] == "Amended title"
     assert "raw" not in v[0]
     assert client.get(f"/v1/notices/{uuid.uuid4()}", headers=h).status_code == 404
+
+
+def test_etenders_load_queues_matching_only_for_open_notices(clean_notices):
+    from tenderline.etenders import open_event_ids
+
+    stats = load_csv(FIX / "etenders_sample.csv")
+    open_events = open_event_ids(stats.events)
+    with owner_session() as s:
+        open_ids = {
+            str(r[0])
+            for r in s.execute(
+                text(
+                    "SELECT id FROM notices WHERE source='etenders' AND status='open' AND (deadline_at IS NULL OR deadline_at > now())"
+                )
+            )
+        }
+    assert {e["notice_id"] for e in open_events} == open_ids  # awarded/cancelled/past-deadline rows are excluded
+    assert len(open_events) < len(stats.events)

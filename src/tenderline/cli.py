@@ -84,6 +84,7 @@ def etenders_load(
     since: Annotated[str | None, typer.Option(help="only rows published on/after YYYY-MM-DD")] = None,
     limit: Annotated[int | None, typer.Option(help="stop after N rows")] = None,
     open_only: Annotated[bool, typer.Option(help="skip rows whose deadline has passed")] = False,
+    match: Annotated[bool, typer.Option(help="queue matching for newly loaded open notices")] = True,
 ) -> None:
     """Import the eTenders open-data CSV from a local file (columns are detected from its header)."""
     from tenderline.etenders import CsvFormatError, load_csv

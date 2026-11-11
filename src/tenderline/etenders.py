@@ -216,3 +216,27 @@ def load_csv(
             break
     flush()
     return stats
+
+
+def open_event_ids(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep only events for notices that are still open, so matching is not triggered for historical rows."""
+    import uuid
+
+    from sqlalchemy import or_, select
+
+    from tenderline.models import Notice
+
+    ids = [uuid.UUID(e["notice_id"]) for e in events if e["kind"] == "call"]
+    if not ids:
+        return []
+    with public_session() as db:
+        open_ids = set(
+            db.scalars(
+                select(Notice.id).where(
+                    Notice.id.in_(ids),
+                    Notice.status == "open",
+                    or_(Notice.deadline_at.is_(None), Notice.deadline_at > datetime.now(UTC)),
+                )
+            )
+        )
+    return [e for e in events if e["kind"] == "call" and uuid.UUID(e["notice_id"]) in open_ids]
