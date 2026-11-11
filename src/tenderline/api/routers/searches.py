@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
@@ -16,6 +16,7 @@ from tenderline.audit import write_audit
 from tenderline.errors import not_found
 from tenderline.models import Match, Notice, SavedSearch
 from tenderline.pagination import paginate
+from tenderline.workflows import runtime
 
 router = APIRouter(prefix="/v1/organisations/{org_id}", tags=["searches", "matches"])
 
@@ -110,7 +111,9 @@ def _snap(s: SavedSearch) -> dict[str, Any]:
 
 
 @router.post("/saved-searches", status_code=201, response_model=SearchOut)
-def create_search(org_id: uuid.UUID, payload: SearchIn, ctx: CanWrite, key: IdemKey) -> JSONResponse:
+def create_search(
+    org_id: uuid.UUID, payload: SearchIn, ctx: CanWrite, key: IdemKey, bg: BackgroundTasks
+) -> JSONResponse:
     def run() -> tuple[int, Any]:
         s = SavedSearch(organisation_id=org_id, **payload.model_dump())
         ctx.db.add(s)
@@ -126,6 +129,7 @@ def create_search(org_id: uuid.UUID, payload: SearchIn, ctx: CanWrite, key: Idem
             entity_id=s.id,
             after=_snap(s),
         )
+        bg.add_task(runtime.enqueue_backfill, org_id, s.id)  # after commit: match existing open notices
         return 201, SearchOut.model_validate(s)
 
     return idempotent(ctx.db, org_id, key, payload, run)
@@ -150,7 +154,9 @@ def get_search(org_id: uuid.UUID, search_id: uuid.UUID, ctx: CanRead) -> SavedSe
 
 
 @router.put("/saved-searches/{search_id}", response_model=SearchOut, summary="Replace a saved search")
-def replace_search(org_id: uuid.UUID, search_id: uuid.UUID, payload: SearchIn, ctx: CanWrite) -> SavedSearch:
+def replace_search(
+    org_id: uuid.UUID, search_id: uuid.UUID, payload: SearchIn, ctx: CanWrite, bg: BackgroundTasks
+) -> SavedSearch:
     s = _get_search(ctx, search_id)
     before = _snap(s)
     for k, v in payload.model_dump().items():
@@ -171,7 +177,9 @@ def replace_search(org_id: uuid.UUID, search_id: uuid.UUID, payload: SearchIn, c
 
 
 @router.patch("/saved-searches/{search_id}", response_model=SearchOut, summary="Rename or (de)activate")
-def patch_search(org_id: uuid.UUID, search_id: uuid.UUID, payload: SearchPatch, ctx: CanWrite) -> SavedSearch:
+def patch_search(
+    org_id: uuid.UUID, search_id: uuid.UUID, payload: SearchPatch, ctx: CanWrite, bg: BackgroundTasks
+) -> SavedSearch:
     s = _get_search(ctx, search_id)
     before = _snap(s)
     if payload.name is not None:
@@ -258,3 +266,30 @@ def get_match(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanRead) -> MatchOut:
     if m is None:
         raise not_found("Match")
     return _match_out(ctx, [m])[0]
+
+
+@router.post(
+    "/matches/{match_id}/qualify",
+    status_code=202,
+    summary="Ask the agent to (re)qualify a match",
+    description="Enqueues qualification on the queue. The agent only writes proposals; a human approves them.",
+)
+def requalify(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanWrite, key: IdemKey) -> JSONResponse:
+    if ctx.db.get(Match, match_id) is None:
+        raise not_found("Match")
+
+    def run() -> tuple[int, Any]:
+        wid = runtime.enqueue_qualify(org_id, match_id, key)
+        write_audit(
+            ctx.db,
+            org_id,
+            actor_type="human",
+            actor_id=str(ctx.user_id),
+            action="match.qualify_requested",
+            entity_type="match",
+            entity_id=match_id,
+            after={"workflow_id": wid},
+        )
+        return 202, {"workflow_id": wid, "match_id": str(match_id), "status": "enqueued"}
+
+    return idempotent(ctx.db, org_id, key, {"match": str(match_id)}, run)

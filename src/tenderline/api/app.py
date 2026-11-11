@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -13,6 +14,7 @@ from tenderline.api.routers import auth, orgs
 from tenderline.config import get_settings
 from tenderline.db import public_session
 from tenderline.errors import install_error_handlers
+from tenderline.observability import instrument_app, record_http, setup_telemetry, timer
 from tenderline.reqctx import set_request_id
 
 DEFAULT_SECRETS = {"dev-only-change-me-dev-only-change-me"}
@@ -47,12 +49,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError("JWT_SECRET must be set to a unique value when ENV=prod")
     from tenderline.workflows.runtime import start_runtime, stop_runtime
 
-    started_here = start_runtime() if s.workflows_enabled else False
+    # DBOS's sync API refuses to run inside a live event loop, so start/stop it from a worker thread.
+    started_here = await asyncio.to_thread(start_runtime) if s.workflows_enabled else False
     try:
         yield
     finally:
         if started_here:
-            stop_runtime()
+            await asyncio.to_thread(stop_runtime)
 
 
 def create_app() -> FastAPI:
@@ -62,13 +65,22 @@ def create_app() -> FastAPI:
         description="Multi-tenant public procurement tracking with human-approved AI proposals.",
         lifespan=lifespan,
     )
+    setup_telemetry()
     install_error_handlers(app)
+    instrument_app(app)
 
     @app.middleware("http")
     async def request_id_mw(request: Request, call_next: Any) -> Response:
         rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex
         set_request_id(rid)
-        response: Response = await call_next(request)
+        started = timer()
+        status = 500
+        try:
+            response: Response = await call_next(request)
+            status = response.status_code
+        finally:
+            route = request.scope.get("route")
+            record_http(request.method, getattr(route, "path", "unmatched"), status, timer() - started)
         response.headers["X-Request-ID"] = rid
         return response
 

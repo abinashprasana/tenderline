@@ -238,3 +238,19 @@ def test_reconciler_starts_executions_that_never_started(runtime, make_org):
     ).get_result()  # second pass: nothing to do
     assert q("SELECT count(*) FROM opportunities")[0][0] == 1
     assert q("SELECT count(*) FROM audit_log WHERE action='proposal.executed'")[0][0] == 1
+
+
+def test_new_saved_search_backfills_notices_that_are_already_stored(runtime, make_org):
+    reset_notice_tables()
+    org = make_org("Acme Hosting")
+    set_profile(org["org_id"], capabilities=["cloud hosting"], regions=["IRL"])
+    store(raw_notice(title="Cloud hosting A"))
+    store(raw_notice(title="Cloud hosting B"))
+    store(raw_notice(title="Road works", cpv=("45233120",)))  # unrelated sector
+    sid = add_search(org["org_id"], cpv_codes=["72000000"])  # created AFTER the notices were ingested
+    out = DBOS.start_workflow(tasks.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
+    assert out["new_or_refreshed_matches"] == 2
+    wait_for(lambda: q("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 2, message="qualified")
+    assert q("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] >= 2
+    again = DBOS.start_workflow(tasks.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
+    assert again["new_or_refreshed_matches"] == 0  # idempotent

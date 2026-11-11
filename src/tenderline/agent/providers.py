@@ -160,6 +160,18 @@ class OllamaProvider:
 _WORD = re.compile(r"[a-z0-9]{4,}")
 
 
+def _days_left(deadline_at: str | None) -> float | None:
+    if not deadline_at:
+        return None
+    from datetime import UTC, datetime
+
+    try:
+        dt = datetime.fromisoformat(deadline_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (dt - datetime.now(UTC)).total_seconds() / 86400
+
+
 def _words(text: str) -> set[str]:
     return set(_WORD.findall(text.casefold()))
 
@@ -205,11 +217,15 @@ class FakeProvider:
         actions: list[dict[str, Any]] = []
         if score >= 60:
             actions.append({"type": "create_opportunity", "payload": {}, "rationale": "Strong fit; start tracking"})
-            if notice.get("deadline_at"):
+            days_left = _days_left(notice.get("deadline_at"))
+            lead = [d for d in (14, 7, 2) if days_left is not None and d < days_left]
+            if not lead and days_left is not None and days_left > 1:
+                lead = [1]
+            if lead:
                 actions.append(
                     {
                         "type": "add_deadline_reminders",
-                        "payload": {"days_before": [14, 7, 2]},
+                        "payload": {"days_before": lead},
                         "rationale": "Remind the team ahead of the submission deadline",
                     }
                 )

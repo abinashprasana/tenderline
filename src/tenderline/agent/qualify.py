@@ -25,7 +25,7 @@ from tenderline.config import Settings, get_settings
 from tenderline.db import tenant_session
 from tenderline.matching import load_notice_view
 from tenderline.models import AgentProposal, LlmCall, Match, Membership, Organisation, User
-from tenderline.observability import current_trace_id, record_llm_call
+from tenderline.observability import current_trace_id, record_llm_call, tracer
 
 REVIEWER_ROLES = ("reviewer", "bid_manager", "owner")
 
@@ -162,7 +162,10 @@ def qualify_match(org_id: uuid.UUID, match_id: uuid.UUID, providers: list[LlmPro
                 "trace_id": current_trace_id(),
             }
             try:
-                res = provider.complete(SYSTEM_PROMPT, user_prompt)
+                with tracer().start_as_current_span(
+                    "llm.complete", attributes={"llm.provider": provider.name, "llm.model": provider.model}
+                ):
+                    res = provider.complete(SYSTEM_PROMPT, user_prompt)
             except ProviderError as exc:
                 errors.append(str(exc))
                 _record_call(org_id, {**row, "status": "error", "error": str(exc)[:1000]})

@@ -194,3 +194,32 @@ def match_notice(notice_id: uuid.UUID) -> list[tuple[uuid.UUID, uuid.UUID]]:
     for org_id in list_org_ids():
         out.extend((org_id, m) for m in match_notice_for_org(org_id, n))
     return out
+
+
+def backfill_org(org_id: uuid.UUID, limit: int = 500) -> list[uuid.UUID]:
+    """Match an organisation's active searches against notices that are already stored and still open.
+
+    Run when a saved search is created or changed, so a new search shows today's opportunities immediately.
+    Returns ids of matches that need qualification.
+    """
+    from datetime import UTC, datetime
+
+    with public_session() as db:
+        ids = list(
+            db.scalars(
+                select(Notice.id)
+                .where(
+                    Notice.status == "open",
+                    Notice.notice_type.like("cn-%"),
+                    (Notice.deadline_at.is_(None)) | (Notice.deadline_at > datetime.now(UTC)),
+                )
+                .order_by(Notice.publication_date.desc().nulls_last(), Notice.id)
+                .limit(limit)
+            )
+        )
+    out: list[uuid.UUID] = []
+    for nid in ids:
+        view = load_notice_view(nid)
+        if view is not None:
+            out.extend(match_notice_for_org(org_id, view))
+    return out

@@ -21,10 +21,10 @@ from tenderline.audit import write_audit
 from tenderline.config import get_settings
 from tenderline.db import public_session, tenant_session
 from tenderline.faults import maybe_crash
-from tenderline.matching import match_notice
+from tenderline.matching import backfill_org, match_notice
 from tenderline.models import AgentProposal, Deadline, Notice, Opportunity, Organisation
 from tenderline.notices import finish_run, ingest_batch, last_cursor, last_success_date, normalise_name, start_run
-from tenderline.observability import record_ingested, record_workflow_failure
+from tenderline.observability import continue_trace, record_ingested, record_workflow_failure, tracer
 from tenderline.opportunities import CLOSED, change_status
 from tenderline.ted.client import TedClient, TedExpiredToken
 from tenderline.ted.query import build_ingest_query
@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 
 QUEUE_ENRICH = "enrich"
 QUEUE_QUALIFY = "qualify"
+QUEUE_INGEST = "ingest"
 EVENTS_TOPIC = "events"
 
 
@@ -78,7 +79,8 @@ def start_run_step(since_iso: str | None) -> dict[str, Any]:
 def ingest_page_step(run_id: str, query: str, token: str | None, page_no: int) -> dict[str, Any]:
     """Fetch one page and store it; the cursor moves in the same transaction as the data."""
     try:
-        page = _ted_client().search_page(query, token=token)
+        with tracer().start_as_current_span("ted.search_page", attributes={"ted.page": page_no}):
+            page = _ted_client().search_page(query, token=token)
     except TedExpiredToken:
         return {"expired": True, "events": [], "next_token": None, "count": 0}
     events = ingest_batch(uuid.UUID(run_id), page.notices, page.next_token, page_no, query)
@@ -138,7 +140,8 @@ def scheduled_ingestion(scheduled_time: datetime, context: Any) -> None:
 # ===================================================================== 2. enrichment + matching
 @DBOS.step()
 def match_step(notice_id: str) -> list[list[str]]:
-    return [[str(o), str(m)] for o, m in match_notice(uuid.UUID(notice_id))]
+    with tracer().start_as_current_span("queue.match_notice", attributes={"tenderline.notice_id": notice_id}):
+        return [[str(o), str(m)] for o, m in match_notice(uuid.UUID(notice_id))]
 
 
 def wake(workflow_id: str, msg_type: str) -> None:
@@ -178,14 +181,17 @@ def process_notice_workflow(event: dict[str, Any]) -> dict[str, Any]:
     backoff_rate=2.0,
     should_retry=lambda e: isinstance(e, AgentUnavailable),
 )
-def qualify_step(org_id: str, match_id: str) -> dict[str, Any]:
-    return qualify_match(uuid.UUID(org_id), uuid.UUID(match_id))
+def qualify_step(org_id: str, match_id: str, traceparent: str | None = None) -> dict[str, Any]:
+    with continue_trace(
+        traceparent, "queue.qualify_match", **{"tenderline.org_id": org_id, "tenderline.match_id": match_id}
+    ):
+        return qualify_match(uuid.UUID(org_id), uuid.UUID(match_id))
 
 
 @DBOS.workflow()
-def qualify_workflow(org_id: str, match_id: str) -> dict[str, Any]:
+def qualify_workflow(org_id: str, match_id: str, traceparent: str | None = None) -> dict[str, Any]:
     try:
-        return qualify_step(org_id, match_id)
+        return qualify_step(org_id, match_id, traceparent)
     except Exception:
         record_workflow_failure("qualify_workflow")
         raise
@@ -193,16 +199,17 @@ def qualify_workflow(org_id: str, match_id: str) -> dict[str, Any]:
 
 # ===================================================================== approved-proposal execution
 @DBOS.step()
-def run_proposal_step(org_id: str, proposal_id: str) -> dict[str, Any]:
-    res = run_proposal(uuid.UUID(org_id), uuid.UUID(proposal_id))
+def run_proposal_step(org_id: str, proposal_id: str, traceparent: str | None = None) -> dict[str, Any]:
+    with continue_trace(traceparent, "workflow.execute_proposal", **{"tenderline.proposal_id": proposal_id}):
+        res = run_proposal(uuid.UUID(org_id), uuid.UUID(proposal_id))
     maybe_crash("after_tool_commit")  # tests: die after the DB commit but before DBOS records the step
     return res
 
 
 @DBOS.workflow()
-def execute_proposal_workflow(org_id: str, proposal_id: str) -> dict[str, Any]:
+def execute_proposal_workflow(org_id: str, proposal_id: str, traceparent: str | None = None) -> dict[str, Any]:
     """Workflow id == proposal id, so the action cannot be started twice."""
-    res = run_proposal_step(org_id, proposal_id)
+    res = run_proposal_step(org_id, proposal_id, traceparent)
     opp_id = (res.get("result") or {}).get("opportunity_id")
     if res["status"] == "executed" and opp_id:
         wid = opportunity_workflow_id(org_id, opp_id)
@@ -250,7 +257,10 @@ def apply_message_step(org_id: str, opp_id: str, msg: dict[str, Any]) -> None:
 def fire_due_step(org_id: str, opp_id: str) -> list[str]:
     """Mark due deadlines/reminders as fired exactly once (row lock + fired_at) and audit each."""
     fired: list[str] = []
-    with tenant_session(org_id) as db:
+    with (
+        tracer().start_as_current_span("workflow.fire_due", attributes={"tenderline.opportunity_id": opp_id}),
+        tenant_session(org_id) as db,
+    ):
         rows = db.scalars(
             select(Deadline)
             .where(
@@ -298,6 +308,13 @@ def opportunity_workflow(org_id: str, opp_id: str) -> str:
 # ===================================================================== 5. corrigendum handling
 @DBOS.step()
 def corrigendum_step(event: dict[str, Any]) -> dict[str, Any]:
+    with tracer().start_as_current_span(
+        "workflow.corrigendum", attributes={"tenderline.notice_id": event["notice_id"]}
+    ):
+        return _corrigendum(event)
+
+
+def _corrigendum(event: dict[str, Any]) -> dict[str, Any]:
     notice_id, version, changes = uuid.UUID(event["notice_id"]), int(event["version"]), event.get("changes") or {}
     with public_session() as db:
         org_ids = [r[0] for r in db.execute(text("SELECT org_id FROM app_orgs_for_notice(:n)"), {"n": notice_id})]
@@ -369,6 +386,11 @@ def corrigendum_step(event: dict[str, Any]) -> dict[str, Any]:
 # ===================================================================== 6. award handling
 @DBOS.step()
 def award_step(event: dict[str, Any]) -> dict[str, Any]:
+    with tracer().start_as_current_span("workflow.award", attributes={"tenderline.notice_id": event["notice_id"]}):
+        return _award(event)
+
+
+def _award(event: dict[str, Any]) -> dict[str, Any]:
     closed = 0
     wake_ids: list[str] = []
     for nid in event["awarded_notice_ids"]:
@@ -453,3 +475,20 @@ def reconcile_approvals(scheduled_time: datetime, context: Any) -> None:
     for org_id, proposal_id in stale_approved_step(60):
         with SetWorkflowID(f"exec-{proposal_id}"):
             DBOS.start_workflow(execute_proposal_workflow, org_id, proposal_id)
+
+
+# ===================================================================== saved-search backfill
+@DBOS.step()
+def backfill_step(org_id: str, traceparent: str | None = None) -> list[str]:
+    with continue_trace(traceparent, "queue.backfill_matches", **{"tenderline.org_id": org_id}):
+        return [str(m) for m in backfill_org(uuid.UUID(org_id))]
+
+
+@DBOS.workflow()
+def backfill_workflow(org_id: str, search_id: str, traceparent: str | None = None) -> dict[str, Any]:
+    """A new/changed saved search is matched against notices already in the database, then qualified.
+    The request's trace context rides along, so API -> enrich queue -> qualify queue -> LLM is one trace."""
+    match_ids = backfill_step(org_id, traceparent)
+    for match_id in match_ids:
+        DBOS.enqueue_workflow(QUEUE_QUALIFY, qualify_workflow, org_id, match_id, traceparent)
+    return {"search_id": search_id, "new_or_refreshed_matches": len(match_ids)}

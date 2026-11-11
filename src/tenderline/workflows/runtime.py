@@ -48,6 +48,7 @@ def start_runtime() -> bool:
         DBOS.launch()
         DBOS.register_queue(tasks.QUEUE_ENRICH, worker_concurrency=s.enrich_queue_concurrency)
         DBOS.register_queue(tasks.QUEUE_QUALIFY, worker_concurrency=s.qualify_queue_concurrency)
+        DBOS.register_queue(tasks.QUEUE_INGEST, global_concurrency=1)  # one ingestion at a time
         if s.env != "test":
             DBOS.apply_schedules(
                 [
@@ -56,6 +57,7 @@ def start_runtime() -> bool:
                         "workflow_fn": tasks.scheduled_ingestion,
                         "schedule": s.ingest_cron,
                         "context": "ted",
+                        "queue_name": tasks.QUEUE_INGEST,
                     },
                     {
                         "schedule_name": "approval-reconciler",
@@ -84,13 +86,13 @@ def _require() -> None:
 
 
 # ------------------------------------------------------------------ helpers used by the API
-def start_execution(org_id: uuid.UUID, proposal_id: uuid.UUID) -> Any:
+def start_execution(org_id: uuid.UUID, proposal_id: uuid.UUID, traceparent: str | None = None) -> Any:
     """Start executing an approved proposal. The workflow id is the proposal id: it can only run once."""
     _require()
     from tenderline.workflows.tasks import execute_proposal_workflow
 
     with SetWorkflowID(f"exec-{proposal_id}"):
-        return DBOS.start_workflow(execute_proposal_workflow, str(org_id), str(proposal_id))
+        return DBOS.start_workflow(execute_proposal_workflow, str(org_id), str(proposal_id), traceparent)
 
 
 def start_opportunity_workflow(org_id: uuid.UUID, opp_id: uuid.UUID, workflow_id: str) -> None:
@@ -124,3 +126,26 @@ def trigger_ingestion(since_iso: str | None = None) -> str:
 
     handle = DBOS.start_workflow(ingest_ted_workflow, since_iso)
     return str(handle.workflow_id)
+
+
+def enqueue_qualify(org_id: uuid.UUID, match_id: uuid.UUID, idempotency_key: str) -> str:
+    """Enqueue qualification, carrying the caller's trace context so one trace spans API -> queue -> LLM -> DB."""
+    _require()
+    from tenderline.observability import current_traceparent
+    from tenderline.workflows.tasks import QUEUE_QUALIFY, qualify_workflow
+
+    wid = f"qualify-{org_id}-{match_id}-{idempotency_key}"[:200]
+    with SetWorkflowID(wid):
+        DBOS.enqueue_workflow(QUEUE_QUALIFY, qualify_workflow, str(org_id), str(match_id), current_traceparent())
+    return wid
+
+
+def enqueue_backfill(org_id: uuid.UUID, search_id: uuid.UUID) -> None:
+    """Best effort: a saved search must save even if the workflow runtime is down (tests, maintenance)."""
+    if not _started:
+        log.warning("workflow runtime not running; skipped backfill for search %s", search_id)
+        return
+    from tenderline.observability import current_traceparent
+    from tenderline.workflows.tasks import QUEUE_ENRICH, backfill_workflow
+
+    DBOS.enqueue_workflow(QUEUE_ENRICH, backfill_workflow, str(org_id), str(search_id), current_traceparent())

@@ -8,7 +8,7 @@ dependencies = [
   "uvicorn[standard]>=0.30",
   "pydantic>=2.8",
   "pydantic-settings>=2.4",
-  "sqlalchemy>=2.0.30",
+  "sqlalchemy>=2.0.30,<2.1",  # OpenTelemetry SQLAlchemy instrumentation does not support 2.1 yet
   "alembic>=1.13",
   "psycopg[binary]>=3.2",
   "dbos>=2.0",
@@ -59,6 +59,9 @@ ignore = ["S101", "B008", "S608"]
 "tests/**" = ["S105", "S106", "S311", "E501", "C408", "S603", "S607", "B017"]
 "src/tenderline/migrations/**" = ["E501", "S"]
 "src/tenderline/config.py" = ["S105"]
+"src/tenderline/demo.py" = ["E501", "T201"]
+"src/tenderline/cli.py" = ["E501"]
+"src/tenderline/seed.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

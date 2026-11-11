@@ -1,0 +1,35 @@
+groups:
+  - name: tenderline
+    rules:
+      - alert: IngestionFailing
+        expr: increase(tenderline_workflow_failures_total{workflow="ingest_ted_workflow"}[1h]) > 0 or tenderline_ingest_lag_seconds > 36 * 3600
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: TED ingestion failed or is stale
+          description: The ingestion workflow failed in the last hour, or no ingestion has succeeded for over 36 hours.
+      - alert: QueueBacklog
+        expr: sum by (queue) (tenderline_queue_depth{status="ENQUEUED"}) > 100
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Queue {{ $labels.queue }} has a backlog"
+          description: More than 100 workflows have been waiting for 10 minutes.
+      - alert: HighApiErrorRate
+        expr: sum(rate(tenderline_http_request_duration_seconds_count{http_status_code=~"5.."}[5m])) / sum(rate(tenderline_http_request_duration_seconds_count[5m])) > 0.05
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: API 5xx error rate above 5%
+          description: More than 5% of API requests failed with a 5xx status over the last 5 minutes.
+      - alert: LlmSpendHigh
+        expr: sum by (org_id) (increase(tenderline_llm_cost_usd_total[24h])) > 5
+        labels: {severity: ticket}
+        annotations:
+          summary: "LLM spend above 5 USD per day for org {{ $labels.org_id }}"
+          description: Adjust the threshold in observability/alerts.yml to your budget.
+      - alert: WorkflowFailures
+        expr: increase(tenderline_workflow_failures_total[15m]) > 3
+        labels: {severity: ticket}
+        annotations:
+          summary: Several workflows failed within 15 minutes

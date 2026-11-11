@@ -17,6 +17,7 @@ from tenderline.api.deps import CanDecide, CanRead, Ctx, IdemKey, idempotent
 from tenderline.audit import write_audit
 from tenderline.errors import ApiError, body, not_found
 from tenderline.models import AgentProposal, Approval, Notice
+from tenderline.observability import current_traceparent
 from tenderline.pagination import paginate
 from tenderline.workflows import runtime
 
@@ -190,7 +191,7 @@ def _decide(
     if resp.status_code == 200 and decision != "rejected" and "idempotent-replay" not in resp.headers:
         # Start only after this transaction commits (background tasks run after the response). If the process
         # dies in between, the reconciler workflow restarts the execution: workflow id == proposal id.
-        bg.add_task(runtime.start_execution, org_id, proposal_id)
+        bg.add_task(runtime.start_execution, org_id, proposal_id, current_traceparent())
     return resp
 
 

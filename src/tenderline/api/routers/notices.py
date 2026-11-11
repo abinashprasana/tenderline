@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from tenderline.api.deps import UserId
 from tenderline.db import public_session
 from tenderline.errors import not_found
-from tenderline.models import Buyer, Notice, NoticeCpv, NoticeVersion
+from tenderline.models import Buyer, IngestionRun, Notice, NoticeCpv, NoticeVersion
 from tenderline.pagination import paginate
 
 router = APIRouter(prefix="/v1/notices", tags=["notices"])
@@ -178,4 +178,29 @@ def notice_versions(notice_id: uuid.UUID, _: UserId) -> list[NoticeVersion]:
             db.scalars(
                 select(NoticeVersion).where(NoticeVersion.notice_id == notice_id).order_by(NoticeVersion.version)
             )
+        )
+
+
+class RunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    source: str
+    window_from: date | None
+    started_at: datetime
+    finished_at: datetime | None
+    status: str
+    notices_seen: int
+    notices_new: int
+    notices_updated: int
+    error: str | None
+
+
+runs_router = APIRouter(prefix="/v1/ingestion-runs", tags=["notices"])
+
+
+@runs_router.get("", response_model=list[RunOut], summary="Recent ingestion runs (ops visibility)")
+def list_runs(_: UserId, limit: int = 20) -> list[IngestionRun]:
+    with public_session() as db:
+        return list(
+            db.scalars(select(IngestionRun).order_by(IngestionRun.started_at.desc()).limit(max(1, min(limit, 100))))
         )

@@ -1,10 +1,42 @@
+# Development stack: `docker compose up --build`. Needs no cloud account and no API keys (fake LLM provider).
 name: tenderline
+x-app-env: &app-env
+  ENV: ${ENV:-dev}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+psycopg://tenderline:${POSTGRES_PASSWORD:-tenderline}@db:5432/tenderline
+  APP_DATABASE_URL: postgresql+psycopg://tenderline_app:${APP_DB_PASSWORD:-tenderline_app}@db:5432/tenderline
+  APP_DB_PASSWORD: ${APP_DB_PASSWORD:-tenderline_app}
+  DBOS_SYSTEM_DATABASE_URL: postgresql://tenderline:${POSTGRES_PASSWORD:-tenderline}@db:5432/tenderline_dbos
+  JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-dev-only-change-me}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:8000/v1/auth/github/callback}
+  LLM_PROVIDER_CHAIN: ${LLM_PROVIDER_CHAIN:-fake}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+  LLM_COST_PER_MTOK_IN: ${LLM_COST_PER_MTOK_IN:-0}
+  LLM_COST_PER_MTOK_OUT: ${LLM_COST_PER_MTOK_OUT:-0}
+  TED_COUNTRY: ${TED_COUNTRY:-IRL}
+  TED_EXTRA_CPV_PREFIXES: ${TED_EXTRA_CPV_PREFIXES:-}
+  TED_MAX_REQUESTS_PER_MINUTE: ${TED_MAX_REQUESTS_PER_MINUTE:-60}
+  INGEST_CRON: ${INGEST_CRON:-0 6 * * *}
+  RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-6000}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4318}
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+
 services:
   db:
     image: postgres:16
     environment:
       POSTGRES_USER: tenderline
-      POSTGRES_PASSWORD: tenderline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tenderline}
       POSTGRES_DB: tenderline
     ports: ["${DB_HOST_PORT:-5433}:5432"]
     volumes:
@@ -14,6 +46,71 @@ services:
       test: ["CMD-SHELL", "pg_isready -U tenderline -d tenderline"]
       interval: 3s
       timeout: 3s
-      retries: 20
+      retries: 30
+
+  app:
+    build: .
+    image: tenderline:dev
+    environment: *app-env
+    ports: ["${APP_PORT:-8000}:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro"]
+    ports: ["4317:4317", "4318:4318"]
+    depends_on: [tempo, loki]
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempodata:/var/tempo
+
+  loki:
+    image: grafana/loki:3.3.2
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/config.yaml:ro
+      - lokidata:/loki
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d", "--web.enable-lifecycle"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - promdata:/prometheus
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports: ["3000:3000"]
+    depends_on: [prometheus, tempo, loki]
+
+  ollama: # optional local LLM: `docker compose --profile ollama up`, then LLM_PROVIDER_CHAIN=ollama
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    volumes: [ollamadata:/root/.ollama]
+    ports: ["11434:11434"]
+
 volumes:
   pgdata: {}
+  tempodata: {}
+  lokidata: {}
+  promdata: {}
+  grafanadata: {}
+  ollamadata: {}
