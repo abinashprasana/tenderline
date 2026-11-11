@@ -56,14 +56,9 @@ def test_tenant_a_cannot_read_or_change_tenant_b(client, make_org):
     assert r.status_code == 404
     assert client.get(f"/v1/organisations/{b['org_id']}/members", headers=H(a["user_id"])).status_code == 404
     with owner_session() as s:
-        assert (
-            s.execute(text("SELECT name FROM organisations WHERE id=:i"), {"i": b["org_id"]}).scalar()
-            == "Tenant B"
-        )
+        assert s.execute(text("SELECT name FROM organisations WHERE id=:i"), {"i": b["org_id"]}).scalar() == "Tenant B"
     # and B is untouched / reachable by its own owner
-    assert (
-        client.get(f"/v1/organisations/{b['org_id']}", headers=H(b["user_id"])).json()["name"] == "Tenant B"
-    )
+    assert client.get(f"/v1/organisations/{b['org_id']}", headers=H(b["user_id"])).json()["name"] == "Tenant B"
 
 
 def test_role_checks(client, make_org):
@@ -92,10 +87,7 @@ def test_create_org_is_idempotent_and_makes_caller_owner(client, make_org):
 def test_last_owner_cannot_be_demoted_or_removed(client, make_org):
     a = make_org()
     base = f"/v1/organisations/{a['org_id']}/members/{a['user_id']}"
-    assert (
-        client.patch(base, json={"role": "viewer"}, headers=H(a["user_id"])).json()["error"]["code"]
-        == "last_owner"
-    )
+    assert client.patch(base, json={"role": "viewer"}, headers=H(a["user_id"])).json()["error"]["code"] == "last_owner"
     assert client.delete(base, headers=H(a["user_id"])).status_code == 409
 
 
@@ -140,10 +132,7 @@ def test_rate_limit_per_organisation(client, make_org, monkeypatch):
     get_settings.cache_clear()
     try:
         a, b = make_org(), make_org()
-        codes = [
-            client.get(f"/v1/organisations/{a['org_id']}", headers=H(a["user_id"])).status_code
-            for _ in range(5)
-        ]
+        codes = [client.get(f"/v1/organisations/{a['org_id']}", headers=H(a["user_id"])).status_code for _ in range(5)]
         assert codes == [200, 200, 200, 429, 429]
         r = client.get(f"/v1/organisations/{a['org_id']}", headers=H(a["user_id"]))
         assert r.json()["error"]["code"] == "rate_limited" and "Retry-After" in r.headers

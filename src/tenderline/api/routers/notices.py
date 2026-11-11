@@ -105,9 +105,7 @@ def apply_filters(stmt: Select[Any], f: NoticeFilters) -> Select[Any]:
     if f.q:
         stmt = stmt.where(Notice.title.ilike(f"%{f.q}%"))
     if f.cpv:
-        stmt = stmt.where(
-            exists().where(NoticeCpv.notice_id == Notice.id, NoticeCpv.cpv_code.like(f"{f.cpv}%"))
-        )
+        stmt = stmt.where(exists().where(NoticeCpv.notice_id == Notice.id, NoticeCpv.cpv_code.like(f"{f.cpv}%")))
     if f.buyer:
         stmt = stmt.where(Notice.buyer_id.in_(select(Buyer.id).where(Buyer.name.ilike(f"%{f.buyer}%"))))
     if f.country:
@@ -135,14 +133,11 @@ def to_out(db: Session, notices: list[Notice]) -> list[NoticeOut]:
     ids = [n.id for n in notices]
     cpvs: dict[uuid.UUID, list[str]] = {i: [] for i in ids}
     for nid, code in db.execute(
-        select(NoticeCpv.notice_id, NoticeCpv.cpv_code)
-        .where(NoticeCpv.notice_id.in_(ids))
-        .order_by(NoticeCpv.cpv_code)
+        select(NoticeCpv.notice_id, NoticeCpv.cpv_code).where(NoticeCpv.notice_id.in_(ids)).order_by(NoticeCpv.cpv_code)
     ):
         cpvs[nid].append(code)
     buyers = {
-        b.id: b.name
-        for b in db.scalars(select(Buyer).where(Buyer.id.in_([n.buyer_id for n in notices if n.buyer_id])))
+        b.id: b.name for b in db.scalars(select(Buyer).where(Buyer.id.in_([n.buyer_id for n in notices if n.buyer_id])))
     }
     out = []
     for n in notices:
@@ -153,9 +148,7 @@ def to_out(db: Session, notices: list[Notice]) -> list[NoticeOut]:
     return out
 
 
-@router.get(
-    "", response_model=NoticePage, summary="List and filter notices (newest first, cursor pagination)"
-)
+@router.get("", response_model=NoticePage, summary="List and filter notices (newest first, cursor pagination)")
 def list_notices(
     _: UserId,
     f: Annotated[NoticeFilters, Depends(_filters)],
@@ -163,9 +156,7 @@ def list_notices(
     limit: int = 50,
 ) -> NoticePage:
     with public_session() as db:
-        rows, nxt = paginate(
-            db, apply_filters(select(Notice), f), Notice.created_at, Notice.id, cursor, limit
-        )
+        rows, nxt = paginate(db, apply_filters(select(Notice), f), Notice.created_at, Notice.id, cursor, limit)
         return NoticePage(items=to_out(db, rows), next_cursor=nxt)
 
 
@@ -185,8 +176,6 @@ def notice_versions(notice_id: uuid.UUID, _: UserId) -> list[NoticeVersion]:
             raise not_found("Notice")
         return list(
             db.scalars(
-                select(NoticeVersion)
-                .where(NoticeVersion.notice_id == notice_id)
-                .order_by(NoticeVersion.version)
+                select(NoticeVersion).where(NoticeVersion.notice_id == notice_id).order_by(NoticeVersion.version)
             )
         )

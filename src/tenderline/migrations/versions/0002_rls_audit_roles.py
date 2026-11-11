@@ -47,10 +47,7 @@ def upgrade() -> None:
             f"USING (organisation_id = {ORG_EXPR}) WITH CHECK (organisation_id = {ORG_EXPR})"
         )
     op.execute("ALTER TABLE organisations ENABLE ROW LEVEL SECURITY")
-    op.execute(
-        f"CREATE POLICY tenant_isolation ON organisations "
-        f"USING (id = {ORG_EXPR}) WITH CHECK (id = {ORG_EXPR})"
-    )
+    op.execute(f"CREATE POLICY tenant_isolation ON organisations USING (id = {ORG_EXPR}) WITH CHECK (id = {ORG_EXPR})")
 
     # Append-only enforcement: reject UPDATE and DELETE even for the owner role.
     op.execute(

@@ -74,9 +74,7 @@ def _check_role(role: str) -> None:
         raise ApiError(422, "invalid_role", f"role must be one of {list(ROLES)}")
 
 
-@router.post(
-    "", status_code=201, response_model=OrgOut, summary="Create an organisation (caller becomes owner)"
-)
+@router.post("", status_code=201, response_model=OrgOut, summary="Create an organisation (caller becomes owner)")
 def create_org(payload: OrgCreate, user_id: UserId, key: IdemKey) -> JSONResponse:
     # The organisation id is derived from (user, idempotency key): a retry maps to the same row.
     org_id = uuid.uuid5(_NS, f"{user_id}:{key}")
@@ -183,9 +181,7 @@ def add_member(org_id: uuid.UUID, payload: MemberIn, ctx: IsAdmin, key: IdemKey)
     return idempotent(ctx.db, org_id, key, payload, run)
 
 
-@router.patch(
-    "/{org_id}/members/{user_id}", response_model=MemberOut, summary="Change a member's role (owner)"
-)
+@router.patch("/{org_id}/members/{user_id}", response_model=MemberOut, summary="Change a member's role (owner)")
 def change_role(org_id: uuid.UUID, user_id: uuid.UUID, payload: RolePatch, ctx: IsAdmin) -> MemberOut:
     _check_role(payload.role)
     m = ctx.db.scalars(select(Membership).where(Membership.user_id == user_id)).first()
@@ -232,6 +228,4 @@ def remove_member(org_id: uuid.UUID, user_id: uuid.UUID, ctx: IsAdmin) -> None:
 
 
 def _owner_count(ctx: Any) -> int:
-    return int(
-        ctx.db.scalar(select(func.count()).select_from(Membership).where(Membership.role == "owner")) or 0
-    )
+    return int(ctx.db.scalar(select(func.count()).select_from(Membership).where(Membership.role == "owner")) or 0)

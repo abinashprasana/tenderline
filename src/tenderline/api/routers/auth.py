@@ -28,7 +28,7 @@ GITHUB_USER = "https://api.github.com/user"
 
 class TokenOut(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
     user_id: uuid.UUID
     login: str
 
@@ -133,9 +133,7 @@ def dev_token(payload: DevTokenIn) -> TokenOut:
             stmt = (
                 pg_insert(Membership)
                 .values(organisation_id=payload.organisation_id, user_id=user_id, role=payload.role)
-                .on_conflict_do_update(
-                    index_elements=["organisation_id", "user_id"], set_={"role": payload.role}
-                )
+                .on_conflict_do_update(index_elements=["organisation_id", "user_id"], set_={"role": payload.role})
             )
             db.execute(stmt)
     return TokenOut(access_token=create_token(user_id), user_id=user_id, login=login)

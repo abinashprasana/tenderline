@@ -8,16 +8,12 @@ from tenderline.db import owner_session, tenant_session
 
 
 def _insert_search(s, org_id, name="s"):
-    s.execute(
-        text("INSERT INTO saved_searches (organisation_id, name) VALUES (:o, :n)"), {"o": org_id, "n": name}
-    )
+    s.execute(text("INSERT INTO saved_searches (organisation_id, name) VALUES (:o, :n)"), {"o": org_id, "n": name})
 
 
 def test_app_role_is_not_superuser_and_cannot_bypass_rls(migrated_db):
     with owner_session() as s:
-        row = s.execute(
-            text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname='tenderline_app'")
-        ).one()
+        row = s.execute(text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname='tenderline_app'")).one()
     assert row == (False, False)
 
 

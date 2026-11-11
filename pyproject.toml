@@ -39,7 +39,7 @@ packages = ["src/tenderline"]
 tenderline = "tenderline.cli:app"
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py312"
 src = ["src", "tests"]
 

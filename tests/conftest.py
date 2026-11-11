@@ -10,9 +10,7 @@ import pytest
 _PORT = os.environ.get("TEST_DB_PORT", "5433")
 _HOST = os.environ.get("TEST_DB_HOST", "localhost")
 _DB = "tenderline_test"
-_SUPER = os.environ.get(
-    "TEST_DB_SUPERUSER_URL", f"postgresql://tenderline:tenderline@{_HOST}:{_PORT}/postgres"
-)
+_SUPER = os.environ.get("TEST_DB_SUPERUSER_URL", f"postgresql://tenderline:tenderline@{_HOST}:{_PORT}/postgres")
 
 os.environ.update(
     ENV="test",

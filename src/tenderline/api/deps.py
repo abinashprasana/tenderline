@@ -106,12 +106,8 @@ def idempotent(
             raise ApiError(422, "idempotency_key_reuse", "Idempotency-Key was used with a different request")
         if existing.response is None:
             raise ApiError(409, "request_in_progress", "A request with this Idempotency-Key is in progress")
-        return JSONResponse(
-            existing.response, existing.status_code or 200, headers={"Idempotent-Replay": "true"}
-        )
+        return JSONResponse(existing.response, existing.status_code or 200, headers={"Idempotent-Replay": "true"})
     status, data = handler()
     encoded = jsonable_encoder(data)
-    db.execute(
-        update(IdempotencyKey).where(IdempotencyKey.id == row_id).values(status_code=status, response=encoded)
-    )
+    db.execute(update(IdempotencyKey).where(IdempotencyKey.id == row_id).values(status_code=status, response=encoded))
     return JSONResponse(encoded, status)

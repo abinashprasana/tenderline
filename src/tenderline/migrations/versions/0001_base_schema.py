@@ -113,9 +113,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("organisation_id", "key"),
     )
-    op.create_index(
-        op.f("ix_idempotency_keys_organisation_id"), "idempotency_keys", ["organisation_id"], unique=False
-    )
+    op.create_index(op.f("ix_idempotency_keys_organisation_id"), "idempotency_keys", ["organisation_id"], unique=False)
     op.create_table(
         "memberships",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
@@ -174,9 +172,7 @@ def upgrade() -> None:
         sa.Column("organisation_id", sa.UUID(), nullable=False),
         sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("cpv_codes", postgresql.ARRAY(sa.String()), server_default=sa.text("'{}'"), nullable=False),
-        sa.Column(
-            "buyer_names", postgresql.ARRAY(sa.String()), server_default=sa.text("'{}'"), nullable=False
-        ),
+        sa.Column("buyer_names", postgresql.ARRAY(sa.String()), server_default=sa.text("'{}'"), nullable=False),
         sa.Column("keywords", postgresql.ARRAY(sa.String()), server_default=sa.text("'{}'"), nullable=False),
         sa.Column("countries", postgresql.ARRAY(sa.String()), server_default=sa.text("'{}'"), nullable=False),
         sa.Column("min_value", sa.Numeric(precision=18, scale=2), nullable=True),
@@ -189,9 +185,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_saved_searches_organisation_id"), "saved_searches", ["organisation_id"], unique=False
-    )
+    op.create_index(op.f("ix_saved_searches_organisation_id"), "saved_searches", ["organisation_id"], unique=False)
     op.create_table(
         "llm_calls",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
@@ -337,9 +331,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("organisation_id", "notice_id"),
     )
     op.create_index(op.f("ix_opportunities_notice_id"), "opportunities", ["notice_id"], unique=False)
-    op.create_index(
-        op.f("ix_opportunities_organisation_id"), "opportunities", ["organisation_id"], unique=False
-    )
+    op.create_index(op.f("ix_opportunities_organisation_id"), "opportunities", ["organisation_id"], unique=False)
     op.create_table(
         "agent_proposals",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
@@ -373,9 +365,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_agent_proposals_match_id"), "agent_proposals", ["match_id"], unique=False)
     op.create_index(op.f("ix_agent_proposals_notice_id"), "agent_proposals", ["notice_id"], unique=False)
-    op.create_index(
-        op.f("ix_agent_proposals_organisation_id"), "agent_proposals", ["organisation_id"], unique=False
-    )
+    op.create_index(op.f("ix_agent_proposals_organisation_id"), "agent_proposals", ["organisation_id"], unique=False)
     op.create_table(
         "deadlines",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
