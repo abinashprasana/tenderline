@@ -25,6 +25,32 @@ def migrate() -> None:
     command.upgrade(cfg, "head")
     typer.echo("migrations applied")
 
+    from tenderline.cpv import ensure_labels_loaded
+
+    if loaded := ensure_labels_loaded():
+        typer.echo(f"loaded {loaded} CPV code labels")
+
+
+@app.command("cpv-load")
+def cpv_load(
+    path: Annotated[Path | None, typer.Argument(help="cpv_2008.xml from the official zip, or a code,label CSV")] = None,
+    write_csv: Annotated[Path | None, typer.Option(help="also write the parsed labels to this CSV")] = None,
+) -> None:
+    """Load CPV code labels. Without a path, loads the CSV bundled in data/cpv/."""
+    from tenderline import cpv
+
+    source = path or cpv.BUNDLED_CSV
+    if not source.exists():
+        raise typer.BadParameter(f"{source} does not exist")
+    rows = list(cpv.read_official_xml(source) if source.suffix.lower() == ".xml" else cpv.read_csv(source))
+    if not rows:
+        typer.echo(f"error: no CPV codes found in {source}", err=True)
+        raise typer.Exit(1)
+    if write_csv:
+        cpv.write_csv(rows, write_csv)
+        typer.echo(f"wrote {write_csv}")
+    typer.echo(f"stored {cpv.store_labels(rows)} CPV code labels")
+
 
 @app.command()
 def serve(host: str = "0.0.0.0", port: int = 8000, skip_migrate: bool = False) -> None:  # noqa: S104
@@ -46,6 +72,17 @@ def openapi(out: Path = Path("docs/openapi.json")) -> None:
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(create_app().openapi(), indent=2), encoding="utf-8")
+    typer.echo(f"wrote {out}")
+
+
+@app.command("action-schemas")
+def action_schemas(out: Path = Path("frontend/src/api/action-schemas.json")) -> None:
+    """Export the JSON schema of each action payload; the web app builds its edit forms from it."""
+    from tenderline.agent.schema import PAYLOAD_MODELS
+
+    schemas = {action: model.model_json_schema() for action, model in PAYLOAD_MODELS.items()}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(schemas, indent=2) + "\n", encoding="utf-8")
     typer.echo(f"wrote {out}")
 
 

@@ -35,7 +35,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set a unique JWT_SECRET}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      GITHUB_REDIRECT_URI: https://${DOMAIN:?set DOMAIN}/v1/auth/github/callback
+      GITHUB_REDIRECT_URI: https://${DOMAIN:?set DOMAIN}/auth/callback
       LLM_PROVIDER_CHAIN: ${LLM_PROVIDER_CHAIN:-groq,gemini}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}

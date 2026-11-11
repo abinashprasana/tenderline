@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     jwt_ttl_minutes: int = 60
     github_client_id: str = ""
     github_client_secret: str = ""
-    github_redirect_uri: str = "http://localhost:8000/v1/auth/github/callback"
+    github_redirect_uri: str = "http://localhost:5173/auth/callback"
 
     # Rate limiting (per organisation, fixed window)
     rate_limit_per_minute: int = 600

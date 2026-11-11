@@ -4,7 +4,7 @@ Nothing here is needed to run locally (`docker compose up`). These are for produ
 
 | Account / secret | Needed for | Exact variable(s) | How |
 |---|---|---|---|
-| **GitHub OAuth app** | Login (`GET /v1/auth/github/login`) | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI` | GitHub > Settings > Developer settings > OAuth Apps > New. Callback URL must equal `GITHUB_REDIRECT_URI` (`https://<DOMAIN>/v1/auth/github/callback`). |
+| **GitHub OAuth app** | Login (`GET /v1/auth/github/login`) | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI` | GitHub > Settings > Developer settings > OAuth Apps > New. Callback URL must equal `GITHUB_REDIRECT_URI` (`https://<DOMAIN>/auth/callback`, the web app route; in development `http://localhost:5173/auth/callback`). |
 | **JWT secret** | Signing tokens | `JWT_SECRET` | `openssl rand -hex 32`. The app refuses to start with `ENV=prod` and the default. |
 | **Database passwords** | Production Postgres | `POSTGRES_PASSWORD`, `APP_DB_PASSWORD` | Any strong values. `APP_DB_PASSWORD` is the non-superuser role subject to row-level security. |
 | **Oracle Cloud** | Terraform, VM, backups | `TF_VAR`s or `terraform/terraform.tfvars`: `tenancy_ocid`, `user_ocid`, `fingerprint`, `private_key_path`, `compartment_ocid`, `region`, `ssh_public_key`, `admin_cidr` | Create an API key for your user (OCI console > Profile > API keys). Then `cd terraform && terraform init && terraform plan`. **Apply is yours to run.** |

@@ -7,13 +7,13 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from tenderline.api.deps import CanRead, CanWrite, IdempotencyKeyHeader, TenantContext, run_idempotent
 from tenderline.audit import write_audit
 from tenderline.errors import ApiError, not_found
 from tenderline.models import AgentProposal, Deadline, Notice, Opportunity
-from tenderline.opportunities import change_status, ensure_opportunity, snapshot
+from tenderline.opportunities import TRANSITIONS, change_status, ensure_opportunity, snapshot
 from tenderline.pagination import paginate
 from tenderline.workflows import runtime
 
@@ -43,8 +43,10 @@ class OpportunityOut(BaseModel):
     workflow_id: str | None
     closed_at: datetime | None
     created_at: datetime
-    deadlines: list[DeadlineOut] = []
+    allowed_transitions: list[str] = Field(description="Statuses this opportunity can move to next")
+    next_deadline: DeadlineOut | None = Field(default=None, description="Earliest deadline not yet fired")
     pending_proposals: int = 0
+    deadlines: list[DeadlineOut] = Field(default=[], description="Every deadline; filled on the detail endpoints only")
 
 
 class OpportunityPage(BaseModel):
@@ -76,9 +78,38 @@ def _notice_titles(db: Any, opps: list[Opportunity]) -> dict[uuid.UUID, str]:
     return dict(db.execute(select(Notice.id, Notice.title).where(Notice.id.in_(ids))).all()) if ids else {}
 
 
+def _pending_counts(db: Any, notice_ids: set[uuid.UUID]) -> dict[uuid.UUID, int]:
+    if not notice_ids:
+        return {}
+    rows = db.execute(
+        select(AgentProposal.notice_id, func.count())
+        .where(AgentProposal.notice_id.in_(notice_ids), AgentProposal.status == "pending")
+        .group_by(AgentProposal.notice_id)
+    )
+    return {notice_id: int(count) for notice_id, count in rows}
+
+
+def _next_deadlines(db: Any, opportunity_ids: set[uuid.UUID]) -> dict[uuid.UUID, Deadline]:
+    if not opportunity_ids:
+        return {}
+    rows = db.scalars(
+        select(Deadline)
+        .where(Deadline.opportunity_id.in_(opportunity_ids), Deadline.fired_at.is_(None))
+        .order_by(Deadline.opportunity_id, Deadline.due_at, Deadline.id)
+        .distinct(Deadline.opportunity_id)
+    )
+    return {d.opportunity_id: d for d in rows}
+
+
 def serialize_opportunity(
-    db: Any, o: Opportunity, with_children: bool = True, title: str | None = None
+    db: Any,
+    o: Opportunity,
+    with_children: bool = True,
+    title: str | None = None,
+    pending: int | None = None,
+    next_deadline: Deadline | None = None,
 ) -> OpportunityOut:
+    """Detail views (`with_children`) load their own deadlines and counts; list views pass them in bulk."""
     if title is None:
         notice = db.get(Notice, o.notice_id)
         title = notice.title if notice else ""
@@ -93,19 +124,18 @@ def serialize_opportunity(
         workflow_id=o.workflow_id,
         closed_at=o.closed_at,
         created_at=o.created_at,
+        allowed_transitions=sorted(TRANSITIONS.get(o.status, set())),
+        pending_proposals=pending or 0,
+        next_deadline=DeadlineOut.model_validate(next_deadline) if next_deadline else None,
     )
     if with_children:
-        out.deadlines = [
-            DeadlineOut.model_validate(d)
-            for d in db.scalars(select(Deadline).where(Deadline.opportunity_id == o.id).order_by(Deadline.due_at))
-        ]
-        out.pending_proposals = len(
-            db.scalars(
-                select(AgentProposal.id).where(
-                    AgentProposal.notice_id == o.notice_id, AgentProposal.status == "pending"
-                )
-            ).all()
+        deadlines = list(
+            db.scalars(select(Deadline).where(Deadline.opportunity_id == o.id).order_by(Deadline.due_at, Deadline.id))
         )
+        out.deadlines = [DeadlineOut.model_validate(d) for d in deadlines]
+        upcoming = next((d for d in deadlines if d.fired_at is None), None)
+        out.next_deadline = DeadlineOut.model_validate(upcoming) if upcoming else None
+        out.pending_proposals = _pending_counts(db, {o.notice_id}).get(o.notice_id, 0)
     return out
 
 
@@ -125,7 +155,19 @@ def list_opportunities(
         stmt = stmt.where(Opportunity.notice_id == notice_id)
     rows, nxt = paginate(ctx.db, stmt, Opportunity.created_at, Opportunity.id, cursor, limit)
     titles = _notice_titles(ctx.db, rows)
-    items = [serialize_opportunity(ctx.db, o, with_children=False, title=titles.get(o.notice_id, "")) for o in rows]
+    pending = _pending_counts(ctx.db, {o.notice_id for o in rows})
+    upcoming = _next_deadlines(ctx.db, {o.id for o in rows})
+    items = [
+        serialize_opportunity(
+            ctx.db,
+            o,
+            with_children=False,
+            title=titles.get(o.notice_id, ""),
+            pending=pending.get(o.notice_id, 0),
+            next_deadline=upcoming.get(o.id),
+        )
+        for o in rows
+    ]
     return OpportunityPage(items=items, next_cursor=nxt)
 
 

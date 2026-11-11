@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
@@ -148,15 +148,40 @@ def serialize_notices(db: Session, notices: list[Notice]) -> list[NoticeOut]:
     return out
 
 
-@router.get("", response_model=NoticePage, summary="List and filter notices (newest first, cursor pagination)")
+# sort name -> (column, newest/latest first?, value that stands in for NULL so those rows sort last)
+NOTICE_SORTS: dict[str, tuple[Any, bool, Any]] = {
+    "created": (Notice.created_at, True, None),
+    "published": (Notice.publication_date, True, date(1900, 1, 1)),
+    "deadline": (Notice.deadline_at, False, datetime(9999, 12, 31, tzinfo=UTC)),
+}
+
+
+@router.get("", response_model=NoticePage, summary="List and filter notices (cursor pagination)")
 def list_notices(
     _: RateLimitedUserId,
     f: Annotated[NoticeFilters, Depends(notice_filters)],
     cursor: str | None = None,
     limit: int = 50,
+    sort: Annotated[
+        Literal["created", "published", "deadline"],
+        Query(
+            description="created and published: newest first; deadline: soonest first. A cursor only works "
+            "with the sort it came from."
+        ),
+    ] = "created",
 ) -> NoticePage:
+    column, descending, null_as = NOTICE_SORTS[sort]
     with public_session() as db:
-        rows, nxt = paginate(db, apply_filters(select(Notice), f), Notice.created_at, Notice.id, cursor, limit)
+        rows, nxt = paginate(
+            db,
+            apply_filters(select(Notice), f),
+            column,
+            Notice.id,
+            cursor,
+            limit,
+            descending=descending,
+            null_as=null_as,
+        )
         return NoticePage(items=serialize_notices(db, rows), next_cursor=nxt)
 
 
@@ -192,6 +217,7 @@ class RunOut(BaseModel):
     notices_seen: int
     notices_new: int
     notices_updated: int
+    notices_skipped: int
     error: str | None
 
 

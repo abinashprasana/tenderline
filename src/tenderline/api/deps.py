@@ -29,10 +29,12 @@ DECIDE = ("reviewer", "bid_manager", "owner")  # may approve, edit or reject age
 WRITE = ("bid_manager", "owner")  # may manage searches, opportunities and deadlines
 ADMIN = ("owner",)  # may manage members and organisation settings
 
-_bearer = HTTPBearer(auto_error=False)
+bearer_credentials = HTTPBearer(auto_error=False)
 
 
-def current_user_id(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]) -> uuid.UUID:
+def current_user_id(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_credentials)],
+) -> uuid.UUID:
     if credentials is None:
         raise ApiError(401, "unauthorized", "Missing bearer token", headers={"WWW-Authenticate": "Bearer"})
     return decode_token(credentials.credentials)

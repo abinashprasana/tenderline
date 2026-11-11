@@ -7,17 +7,18 @@ from typing import Annotated, Any
 
 import httpx
 import jwt
-from fastapi import APIRouter, Cookie, Query, Response
+from fastapi import APIRouter, Cookie, Depends, Query, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from tenderline.api.deps import ROLES, UserId
+from tenderline.api.deps import ROLES, UserId, bearer_credentials
 from tenderline.config import get_settings
 from tenderline.db import public_session, tenant_session
 from tenderline.errors import ApiError, not_found
 from tenderline.models import Membership, User
-from tenderline.security import create_token
+from tenderline.security import create_token, refresh_token
 
 router = APIRouter(prefix="/v1", tags=["auth"])
 
@@ -169,6 +170,20 @@ def dev_token(payload: DevTokenIn) -> TokenOut:
             )
             db.execute(stmt)
     return TokenOut(access_token=create_token(user_id), user_id=user_id, login=login)
+
+
+@router.post("/auth/refresh", response_model=TokenOut, summary="Swap a valid token for a fresh one")
+def refresh(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_credentials)]) -> TokenOut:
+    """Keeps a working session alive past the token lifetime, up to 12 hours after the original sign-in."""
+    if credentials is None:
+        raise ApiError(401, "unauthorized", "Missing bearer token", headers={"WWW-Authenticate": "Bearer"})
+    user_id, token = refresh_token(credentials.credentials)
+    with public_session() as db:
+        user = db.get(User, user_id)
+        if user is None:
+            raise ApiError(401, "invalid_token", "User no longer exists")
+        login = user.login
+    return TokenOut(access_token=token, user_id=user_id, login=login)
 
 
 @router.get("/me", summary="Current user and organisation memberships")

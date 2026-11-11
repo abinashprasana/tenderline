@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 def register_routers(app: FastAPI) -> None:
     """Additional routers are registered here as each feature area lands."""
-    from tenderline.api.routers import audit, notices, opportunities, proposals, searches
+    from tenderline.api.routers import audit, notices, opportunities, proposals, reference, searches, summary
 
     app.include_router(notices.router)
     app.include_router(notices.runs_router)
@@ -13,3 +13,5 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(searches.router)
     app.include_router(opportunities.router)
     app.include_router(proposals.router)
+    app.include_router(summary.router)
+    app.include_router(reference.router)

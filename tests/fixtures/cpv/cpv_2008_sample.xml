@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Three entries copied in the structure of the official cpv_2008.xml (TED, Regulation (EC) No 213/2008). -->
+<CPV_CODE>
+<CPV CODE="72000000-5">
+<TEXT LANG="BG">ИТ услуги: консултации, разработване на софтуер, Интернет и поддръжка</TEXT>
+<TEXT LANG="EN">IT services: consulting, software development, Internet and support</TEXT>
+</CPV>
+<CPV CODE="72200000-7">
+<TEXT LANG="EN">Software programming and consultancy services</TEXT>
+</CPV>
+<CPV CODE="03000000-1">
+<TEXT LANG="EN">Agricultural, farming, fishing, forestry and related products</TEXT>
+</CPV>
+</CPV_CODE>

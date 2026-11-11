@@ -1,0 +1,83 @@
+{
+  "create_opportunity": {
+    "additionalProperties": false,
+    "properties": {
+      "note": {
+        "default": "",
+        "maxLength": 500,
+        "title": "Note",
+        "type": "string"
+      }
+    },
+    "title": "CreateOpportunity",
+    "type": "object"
+  },
+  "add_deadline_reminders": {
+    "additionalProperties": false,
+    "properties": {
+      "days_before": {
+        "items": {
+          "maximum": 90,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "title": "Days Before",
+        "type": "array"
+      }
+    },
+    "required": [
+      "days_before"
+    ],
+    "title": "AddDeadlineReminders",
+    "type": "object"
+  },
+  "assign_reviewer": {
+    "additionalProperties": false,
+    "properties": {
+      "user_id": {
+        "format": "uuid",
+        "title": "User Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "user_id"
+    ],
+    "title": "AssignReviewer",
+    "type": "object"
+  },
+  "draft_clarification_question": {
+    "additionalProperties": false,
+    "properties": {
+      "question": {
+        "maxLength": 1000,
+        "minLength": 10,
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "question"
+    ],
+    "title": "DraftClarificationQuestion",
+    "type": "object"
+  },
+  "mark_no_bid": {
+    "additionalProperties": false,
+    "properties": {
+      "reason": {
+        "maxLength": 500,
+        "minLength": 3,
+        "title": "Reason",
+        "type": "string"
+      }
+    },
+    "required": [
+      "reason"
+    ],
+    "title": "MarkNoBid",
+    "type": "object"
+  }
+}

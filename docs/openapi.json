@@ -210,6 +210,33 @@
         }
       }
     },
+    "/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Swap a valid token for a fresh one",
+        "description": "Keeps a working session alive past the token lifetime, up to 12 hours after the original sign-in.",
+        "operationId": "refresh_v1_auth_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/v1/me": {
       "get": {
         "tags": [
@@ -290,6 +317,34 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "organisations"
+        ],
+        "summary": "Organisations I belong to, with my role",
+        "operationId": "list_my_orgs_v1_organisations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MyOrgOut"
+                  },
+                  "title": "Response List My Orgs V1 Organisations Get"
                 }
               }
             }
@@ -642,7 +697,7 @@
         "tags": [
           "notices"
         ],
-        "summary": "List and filter notices (newest first, cursor pagination)",
+        "summary": "List and filter notices (cursor pagination)",
         "operationId": "list_notices_v1_notices_get",
         "security": [
           {
@@ -675,6 +730,23 @@
               "default": 50,
               "title": "Limit"
             }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "created",
+                "published",
+                "deadline"
+              ],
+              "type": "string",
+              "description": "created and published: newest first; deadline: soonest first. A cursor only works with the sort it came from.",
+              "default": "created",
+              "title": "Sort"
+            },
+            "description": "created and published: newest first; deadline: soonest first. A cursor only works with the sort it came from."
           },
           {
             "name": "q",
@@ -2987,6 +3059,130 @@
           }
         }
       }
+    },
+    "/v1/organisations/{org_id}/summary": {
+      "get": {
+        "tags": [
+          "summary"
+        ],
+        "summary": "Counts for the overview dashboard",
+        "operationId": "organisation_summary_v1_organisations__org_id__summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cpv-codes": {
+      "get": {
+        "tags": [
+          "reference"
+        ],
+        "summary": "Search CPV codes by code prefix or label",
+        "description": "Digits search by code prefix (`72` finds every IT service code); words search the English label.\n`divisions_only` returns the 2-digit top level (codes ending in six zeros).",
+        "operationId": "search_cpv_codes_v1_cpv_codes_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "divisions_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Divisions Only"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CpvOut"
+                  },
+                  "title": "Response Search Cpv Codes V1 Cpv Codes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3169,6 +3365,36 @@
         ],
         "title": "AuditPage"
       },
+      "CpvOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "division": {
+            "type": "string",
+            "title": "Division"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "division",
+          "description"
+        ],
+        "title": "CpvOut"
+      },
       "DeadlineIn": {
         "properties": {
           "kind": {
@@ -3332,6 +3558,29 @@
           "payload"
         ],
         "title": "EditApproveIn"
+      },
+      "FitBucket": {
+        "properties": {
+          "lower": {
+            "type": "integer",
+            "title": "Lower"
+          },
+          "upper": {
+            "type": "integer",
+            "title": "Upper"
+          },
+          "notices": {
+            "type": "integer",
+            "title": "Notices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lower",
+          "upper",
+          "notices"
+        ],
+        "title": "FitBucket"
       },
       "HTTPValidationError": {
         "properties": {
@@ -3503,6 +3752,35 @@
           "role"
         ],
         "title": "MemberOut"
+      },
+      "MyOrgOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "role"
+        ],
+        "title": "MyOrgOut"
       },
       "NoticeOut": {
         "properties": {
@@ -3810,18 +4088,38 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "allowed_transitions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Transitions",
+            "description": "Statuses this opportunity can move to next"
+          },
+          "next_deadline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeadlineOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Earliest deadline not yet fired"
+          },
+          "pending_proposals": {
+            "type": "integer",
+            "title": "Pending Proposals",
+            "default": 0
+          },
           "deadlines": {
             "items": {
               "$ref": "#/components/schemas/DeadlineOut"
             },
             "type": "array",
             "title": "Deadlines",
+            "description": "Every deadline; filled on the detail endpoints only",
             "default": []
-          },
-          "pending_proposals": {
-            "type": "integer",
-            "title": "Pending Proposals",
-            "default": 0
           }
         },
         "type": "object",
@@ -3835,7 +4133,8 @@
           "flags",
           "workflow_id",
           "closed_at",
-          "created_at"
+          "created_at",
+          "allowed_transitions"
         ],
         "title": "OpportunityOut"
       },
@@ -4301,6 +4600,10 @@
             "type": "integer",
             "title": "Notices Updated"
           },
+          "notices_skipped": {
+            "type": "integer",
+            "title": "Notices Skipped"
+          },
           "error": {
             "anyOf": [
               {
@@ -4324,6 +4627,7 @@
           "notices_seen",
           "notices_new",
           "notices_updated",
+          "notices_skipped",
           "error"
         ],
         "title": "RunOut"
@@ -4578,6 +4882,77 @@
           "status"
         ],
         "title": "StatusIn"
+      },
+      "SummaryOut": {
+        "properties": {
+          "proposals_pending": {
+            "type": "integer",
+            "title": "Proposals Pending"
+          },
+          "notices_awaiting_decision": {
+            "type": "integer",
+            "title": "Notices Awaiting Decision"
+          },
+          "opportunities_open": {
+            "type": "integer",
+            "title": "Opportunities Open"
+          },
+          "opportunities_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Opportunities By Status"
+          },
+          "deadlines_next_7_days": {
+            "type": "integer",
+            "title": "Deadlines Next 7 Days"
+          },
+          "deadlines_next_30_days": {
+            "type": "integer",
+            "title": "Deadlines Next 30 Days"
+          },
+          "fit_score_histogram": {
+            "items": {
+              "$ref": "#/components/schemas/FitBucket"
+            },
+            "type": "array",
+            "title": "Fit Score Histogram"
+          },
+          "notices_ingested_24h": {
+            "type": "integer",
+            "title": "Notices Ingested 24H"
+          },
+          "last_ingestion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "proposals_pending",
+          "notices_awaiting_decision",
+          "opportunities_open",
+          "opportunities_by_status",
+          "deadlines_next_7_days",
+          "deadlines_next_30_days",
+          "fit_score_histogram",
+          "notices_ingested_24h",
+          "last_ingestion",
+          "generated_at"
+        ],
+        "title": "SummaryOut"
       },
       "TokenOut": {
         "properties": {

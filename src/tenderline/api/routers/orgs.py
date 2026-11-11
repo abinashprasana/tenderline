@@ -8,11 +8,11 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from tenderline.api.deps import ROLES, CanRead, IdempotencyKeyHeader, IsAdmin, UserId, run_idempotent
 from tenderline.audit import write_audit
-from tenderline.db import tenant_session
+from tenderline.db import public_session, tenant_session
 from tenderline.errors import ApiError, conflict, not_found
 from tenderline.models import Membership, Organisation, User
 
@@ -69,6 +69,13 @@ class MemberOut(BaseModel):
     role: str
 
 
+class MyOrgOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    role: str
+
+
 def _check_role(role: str) -> None:
     if role not in ROLES:
         raise ApiError(422, "invalid_role", f"role must be one of {list(ROLES)}")
@@ -103,6 +110,20 @@ def create_org(payload: OrgCreate, user_id: UserId, key: IdempotencyKeyHeader) -
         )
         db.refresh(org)
         return JSONResponse(OrgOut.model_validate(org).model_dump(mode="json"), 201)
+
+
+@router.get("", response_model=list[MyOrgOut], summary="Organisations I belong to, with my role")
+def list_my_orgs(user_id: UserId) -> list[MyOrgOut]:
+    with public_session() as db:
+        memberships = db.execute(text("SELECT org_id, role FROM app_user_memberships(:u)"), {"u": user_id}).all()
+    result = []
+    for org_id, role in memberships:
+        # Row-level security only shows an organisation inside its own tenant transaction.
+        with tenant_session(org_id) as db:
+            org = db.get(Organisation, org_id)
+            if org is not None:
+                result.append(MyOrgOut(id=org.id, name=org.name, slug=org.slug, role=role))
+    return sorted(result, key=lambda o: o.name.lower())
 
 
 @router.get("/{org_id}", response_model=OrgOut)
