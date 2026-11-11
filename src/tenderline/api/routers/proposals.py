@@ -16,7 +16,7 @@ from tenderline.agent.schema import validate_payload
 from tenderline.api.deps import CanDecide, CanRead, IdempotencyKeyHeader, TenantContext, run_idempotent
 from tenderline.audit import write_audit
 from tenderline.errors import ApiError, body, not_found
-from tenderline.models import AgentProposal, Approval, Notice
+from tenderline.models import AgentProposal, Approval, AuditLog, Notice
 from tenderline.observability import current_traceparent
 from tenderline.pagination import paginate
 from tenderline.workflows import runtime
@@ -30,6 +30,13 @@ class ApprovalOut(BaseModel):
     edited_payload: dict[str, Any] | None
     reason: str | None
     created_at: datetime
+
+
+class AssessmentOut(BaseModel):
+    """What the agent said about the notice when it made this proposal. Machine-generated, like the rationale."""
+
+    reasons: list[str]
+    risks: list[str]
 
 
 class ProposalOut(BaseModel):
@@ -50,6 +57,9 @@ class ProposalOut(BaseModel):
     decided_at: datetime | None
     executed_at: datetime | None
     approval: ApprovalOut | None = None
+    notice_title: str = ""
+    notice_deadline_at: datetime | None = None
+    assessment: AssessmentOut | None = None
 
 
 class ProposalPage(BaseModel):
@@ -70,15 +80,55 @@ class RejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+def _assessments(db: Any, proposals: list[AgentProposal]) -> dict[uuid.UUID, AssessmentOut]:
+    """The agent's reasons and risks are recorded on the `match.qualified` audit entry written in the same
+    transaction as the proposals. Each proposal takes the latest such entry for its match up to its creation."""
+    match_ids = {str(p.match_id) for p in proposals if p.match_id}
+    if not match_ids:
+        return {}
+    entries: dict[str, list[AuditLog]] = {}
+    for entry in db.scalars(
+        select(AuditLog)
+        .where(AuditLog.action == "match.qualified", AuditLog.entity_id.in_(match_ids))
+        .order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc())
+    ):
+        entries.setdefault(entry.entity_id, []).append(entry)
+    found = {}
+    for p in proposals:
+        candidates = entries.get(str(p.match_id), [])
+        entry = next((e for e in candidates if e.occurred_at <= p.created_at), None)
+        after = entry.after if entry is not None and isinstance(entry.after, dict) else None
+        if after is not None:
+            found[p.id] = AssessmentOut(
+                reasons=[str(r) for r in after.get("reasons") or []],
+                risks=[str(r) for r in after.get("risks") or []],
+            )
+    return found
+
+
 def serialize_proposals(db: Any, proposals: list[AgentProposal]) -> list[ProposalOut]:
-    """Serialise proposals with their approvals using one extra query, not one per row."""
+    """Serialise proposals with their approvals, notice titles and assessments in a few bulk queries."""
     ids = [p.id for p in proposals]
     approvals = (
         {a.proposal_id: a for a in db.scalars(select(Approval).where(Approval.proposal_id.in_(ids)))} if ids else {}
     )
+    notice_ids = {p.notice_id for p in proposals}
+    notices = (
+        {
+            row.id: row
+            for row in db.execute(select(Notice.id, Notice.title, Notice.deadline_at).where(Notice.id.in_(notice_ids)))
+        }
+        if notice_ids
+        else {}
+    )
+    assessments = _assessments(db, proposals)
     out = []
     for p in proposals:
         item = ProposalOut.model_validate(p, from_attributes=True)
+        notice = notices.get(p.notice_id)
+        if notice is not None:
+            item.notice_title, item.notice_deadline_at = notice.title, notice.deadline_at
+        item.assessment = assessments.get(p.id)
         a = approvals.get(p.id)
         if a is not None:
             item.approval = ApprovalOut(

@@ -40,6 +40,22 @@ class DevTokenIn(BaseModel):
     role: str = "owner"
 
 
+class LoginOut(BaseModel):
+    authorize_url: str
+
+
+class MembershipOut(BaseModel):
+    organisation_id: uuid.UUID
+    role: str
+
+
+class MeOut(BaseModel):
+    id: uuid.UUID
+    login: str
+    name: str | None
+    memberships: list[MembershipOut]
+
+
 STATE_COOKIE = "tenderline_oauth_state"
 STATE_TTL_SECONDS = 600
 
@@ -66,7 +82,7 @@ def _check_state(state: str, cookie_nonce: str | None) -> None:
         raise ApiError(400, "invalid_state", "OAuth state does not belong to this browser session")
 
 
-@router.get("/auth/github/login", summary="Start GitHub OAuth login")
+@router.get("/auth/github/login", response_model=LoginOut, summary="Start GitHub OAuth login")
 def github_login(response: Response) -> dict[str, str]:
     settings = get_settings()
     if not settings.github_client_id or not settings.github_client_secret:
@@ -186,7 +202,7 @@ def refresh(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(
     return TokenOut(access_token=token, user_id=user_id, login=login)
 
 
-@router.get("/me", summary="Current user and organisation memberships")
+@router.get("/me", response_model=MeOut, summary="Current user and organisation memberships")
 def me(user_id: UserId) -> dict[str, Any]:
     with public_session() as db:
         user = db.get(User, user_id)

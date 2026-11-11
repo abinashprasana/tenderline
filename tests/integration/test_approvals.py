@@ -91,6 +91,21 @@ def test_proposals_are_pending_and_nothing_ran_before_approval(env):
     assert db_count("SELECT count(*) FROM opportunities") == 0
 
 
+def test_proposals_carry_notice_title_and_the_agents_assessment(env):
+    client, a, notice_id, match_id, raw = env
+    props = list_props(client, a)
+    with owner_session() as s:
+        after = s.execute(
+            text("SELECT after FROM audit_log WHERE action = 'match.qualified' AND entity_id = :m"),
+            {"m": str(match_id)},
+        ).scalar_one()
+    for p in props:
+        assert p["notice_title"] == raw["notice-title"]["eng"]
+        assert p["notice_deadline_at"] is not None
+        assert p["assessment"] == {"reasons": after["reasons"], "risks": after["risks"]}
+    assert props[0]["assessment"]["reasons"], "the fake provider gives reasons"
+
+
 def test_approve_executes_the_action_and_audits_it(env):
     client, a, notice_id, *_ = env
     p = by_type(client, a, "create_opportunity")

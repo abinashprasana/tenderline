@@ -268,9 +268,16 @@ def get_match(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanRead) -> MatchOut:
     return serialize_matches(ctx, [m])[0]
 
 
+class QualifyQueuedOut(BaseModel):
+    workflow_id: str
+    match_id: uuid.UUID
+    status: str
+
+
 @router.post(
     "/matches/{match_id}/qualify",
     status_code=202,
+    response_model=QualifyQueuedOut,
     summary="Ask the agent to (re)qualify a match",
     description="Enqueues qualification on the queue. The agent only writes proposals; a human approves them.",
 )

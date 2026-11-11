@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
+from pydantic import BaseModel
 from sqlalchemy import text
 
 from tenderline import __version__
@@ -40,6 +41,16 @@ LICENCE: dict[str, Any] = {
     "free_text_policy": "Buyer free text is not republished; only a short summary field and a link to the source "
     "notice are stored in structured form.",
 }
+
+
+class MetadataOut(BaseModel):
+    name: str
+    version: str
+    env: str
+    api_version: str
+    contact: str | None
+    data_sources: dict[str, Any]
+    disclaimer: str
 
 
 @asynccontextmanager
@@ -99,7 +110,12 @@ def create_app() -> FastAPI:
             return {"status": "unavailable", "detail": type(exc).__name__}
         return {"status": "ready"}
 
-    @app.get("/v1/metadata", tags=["ops"], summary="Version, data sources, licences and attribution")
+    @app.get(
+        "/v1/metadata",
+        response_model=MetadataOut,
+        tags=["ops"],
+        summary="Version, data sources, licences and attribution",
+    )
     def metadata() -> dict[str, Any]:
         s = get_settings()
         return {

@@ -67,9 +67,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Metadata V1 Metadata Get"
+                  "$ref": "#/components/schemas/MetadataOut"
                 }
               }
             }
@@ -90,11 +88,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object",
-                  "title": "Response Github Login V1 Auth Github Login Get"
+                  "$ref": "#/components/schemas/LoginOut"
                 }
               }
             }
@@ -250,9 +244,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Me V1 Me Get"
+                  "$ref": "#/components/schemas/MeOut"
                 }
               }
             }
@@ -1970,7 +1962,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/QualifyQueuedOut"
+                }
               }
             }
           },
@@ -3255,6 +3249,31 @@
         "type": "object",
         "title": "ApproveIn"
       },
+      "AssessmentOut": {
+        "properties": {
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reasons",
+          "risks"
+        ],
+        "title": "AssessmentOut",
+        "description": "What the agent said about the notice when it made this proposal. Machine-generated, like the rationale."
+      },
       "AuditOut": {
         "properties": {
           "id": {
@@ -3595,6 +3614,19 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "LoginOut": {
+        "properties": {
+          "authorize_url": {
+            "type": "string",
+            "title": "Authorize Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorize_url"
+        ],
+        "title": "LoginOut"
+      },
       "MatchOut": {
         "properties": {
           "id": {
@@ -3697,6 +3729,45 @@
         ],
         "title": "MatchPage"
       },
+      "MeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "login": {
+            "type": "string",
+            "title": "Login"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/MembershipOut"
+            },
+            "type": "array",
+            "title": "Memberships"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "login",
+          "name",
+          "memberships"
+        ],
+        "title": "MeOut"
+      },
       "MemberIn": {
         "properties": {
           "login": {
@@ -3752,6 +3823,76 @@
           "role"
         ],
         "title": "MemberOut"
+      },
+      "MembershipOut": {
+        "properties": {
+          "organisation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organisation Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "role"
+        ],
+        "title": "MembershipOut"
+      },
+      "MetadataOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "api_version": {
+            "type": "string",
+            "title": "Api Version"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "data_sources": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data Sources"
+          },
+          "disclaimer": {
+            "type": "string",
+            "title": "Disclaimer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "env",
+          "api_version",
+          "contact",
+          "data_sources",
+          "disclaimer"
+        ],
+        "title": "MetadataOut"
       },
       "MyOrgOut": {
         "properties": {
@@ -4450,6 +4591,33 @@
                 "type": "null"
               }
             ]
+          },
+          "notice_title": {
+            "type": "string",
+            "title": "Notice Title",
+            "default": ""
+          },
+          "notice_deadline_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Deadline At"
+          },
+          "assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssessmentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4497,6 +4665,30 @@
           "next_cursor"
         ],
         "title": "ProposalPage"
+      },
+      "QualifyQueuedOut": {
+        "properties": {
+          "workflow_id": {
+            "type": "string",
+            "title": "Workflow Id"
+          },
+          "match_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Match Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workflow_id",
+          "match_id",
+          "status"
+        ],
+        "title": "QualifyQueuedOut"
       },
       "RejectIn": {
         "properties": {
