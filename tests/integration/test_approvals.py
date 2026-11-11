@@ -16,7 +16,6 @@ from tests.helpers import (
     add_member,
     audit_actions,
     quiesce_workflows,
-    raw_notice,
     reset_notice_tables,
     seed_match,
     set_profile,
@@ -214,7 +213,7 @@ def test_executing_twice_is_a_noop_the_second_time(env):
 
 def test_approve_after_corrigendum_is_refused_and_requalified(env):
     client, a, notice_id, match_id, raw = env
-    from tenderline.workflows.tasks import process_notice_workflow
+    from tenderline.workflows.notice_events import process_notice_workflow
 
     old = list_props(client, a)
     changed = dict(raw, **{"estimated-value-lot": ["450000"], "deadline-receipt-tender-date-lot": ["2031-02-02Z"]})
@@ -285,20 +284,15 @@ def test_missing_idempotency_key_is_rejected(env):
 def test_failed_precondition_marks_proposal_failed_not_half_done(env):
     client, a, *_ = env
     reviewer = add_member(a["org_id"], "reviewer")
-    # propose assigning a reviewer, then remove their membership before approval
+    # the agent proposed a reviewer who then leaves the organisation before anyone approves
     with owner_session() as s:
-        pid = uuid.uuid4()
-        notice = s.execute(text("SELECT notice_id FROM matches LIMIT 1")).scalar()
+        pid = s.execute(text("SELECT id FROM agent_proposals WHERE action_type='assign_reviewer'")).scalar()
         s.execute(
-            text(
-                "INSERT INTO agent_proposals (id, organisation_id, notice_id, notice_version, action_type, payload, status) "
-                "VALUES (:i,:o,:n,1,'assign_reviewer', CAST(:p AS jsonb),'pending')"
-            ),
-            {"i": pid, "o": a["org_id"], "n": notice, "p": f'{{"user_id": "{reviewer}"}}'},
+            text("UPDATE agent_proposals SET payload = CAST(:p AS jsonb) WHERE id = :i"),
+            {"i": pid, "p": f'{{"user_id": "{reviewer}"}}'},
         )
         s.execute(text("DELETE FROM memberships WHERE user_id=:u"), {"u": reviewer})
     client.post(f"{base(a)}/agent-proposals/{pid}/approve", json={}, headers=H(a["user_id"], k()))
     failed = await_status(client, a, str(pid), "failed")
     assert "not a member" in failed["result"]["error"]
     assert db_count("SELECT count(*) FROM opportunities WHERE assigned_reviewer_id IS NOT NULL") == 0
-    assert raw_notice  # imported helper kept for symmetry with other test modules

@@ -18,11 +18,13 @@ from typing import Any
 from urllib.parse import unquote
 
 from opentelemetry import metrics, propagate, trace
+from opentelemetry.context import Context
 from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import Span, SpanKind, Status, StatusCode
 from pythonjsonlogger.json import JsonFormatter
 
+from tenderline import __version__
 from tenderline.config import get_settings
 from tenderline.reqctx import get_request_id
 
@@ -100,10 +102,29 @@ def current_traceparent() -> str | None:
 
 
 @contextmanager
-def continue_trace(traceparent: str | None, name: str, **attributes: Any) -> Iterator[Span]:
-    """Run a block as a child span of a trace started elsewhere (e.g. the API request that enqueued the work)."""
-    ctx = propagate.extract({"traceparent": traceparent}) if traceparent else None
-    with _tracer.start_as_current_span(name, context=ctx, kind=SpanKind.CONSUMER, attributes=attributes) as span:
+def continue_trace(
+    traceparent: str | None, name: str, attributes: dict[str, Any] | None = None, *, link_only: bool = False
+) -> Iterator[Span]:
+    """Run a block as work caused by a trace that started elsewhere, such as the request that queued it.
+
+    By default the span joins that trace as a child, which suits one request causing one job. With
+    `link_only` the span starts its own trace and carries a link back instead. That is what the OpenTelemetry
+    messaging conventions recommend for fan-out: one request that queues hundreds of jobs would otherwise
+    produce a single trace with thousands of spans.
+    """
+    remote = propagate.extract({"traceparent": traceparent}) if traceparent else None
+    links = []
+    if link_only and remote is not None:
+        remote_span = trace.get_current_span(remote).get_span_context()
+        if remote_span.is_valid:
+            links.append(trace.Link(remote_span))
+    with _tracer.start_as_current_span(
+        name,
+        context=Context() if link_only else remote,
+        kind=SpanKind.CONSUMER,
+        attributes=attributes,
+        links=links,
+    ) as span:
         yield span
 
 
@@ -221,7 +242,11 @@ def setup_telemetry(service_name: str | None = None, *, span_exporter: Any = Non
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 
     resource = Resource.create(
-        {"service.name": service_name or s.service_name, "service.version": "0.1.0", "deployment.environment": s.env}
+        {
+            "service.name": service_name or s.service_name,
+            "service.version": __version__,
+            "deployment.environment": s.env,
+        }
     )
     provider = TracerProvider(resource=resource)
     endpoint = s.otel_exporter_otlp_endpoint.rstrip("/")

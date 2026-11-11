@@ -12,7 +12,7 @@ Nothing here is needed to run locally (`docker compose up`). These are for produ
 | **DNS + domain** | TLS via Caddy | `DOMAIN` | Point an A record at the Terraform `public_ip`. |
 | **Groq key** | LLM provider | `GROQ_API_KEY`, `GROQ_MODEL`, add `groq` to `LLM_PROVIDER_CHAIN` | console.groq.com |
 | **Gemini key** | LLM provider | `GEMINI_API_KEY`, `GEMINI_MODEL`, add `gemini` to `LLM_PROVIDER_CHAIN` | Google AI Studio |
-| **LLM pricing** | Cost tracking | `LLM_COST_PER_MTOK_IN`, `LLM_COST_PER_MTOK_OUT` | USD per million tokens from your provider's price page (applies to groq/gemini; fake and ollama cost 0). |
+| **LLM pricing** | Cost tracking | `GROQ_COST_PER_MTOK_IN`, `GROQ_COST_PER_MTOK_OUT`, `GEMINI_COST_PER_MTOK_IN`, `GEMINI_COST_PER_MTOK_OUT` | USD per million tokens, from each provider's price page. Left at 0, cost is recorded as 0. |
 | **Grafana Cloud** | Hosted telemetry | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` (`Authorization=Basic <base64 instanceId:token>`) | Grafana Cloud > your stack > OpenTelemetry (OTLP). Set only these two variables; no code or collector change. |
 | **Langfuse** (optional) | LLM traces | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | Off when keys are empty. |
 | **GitHub Actions secrets** | Deploy job | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` | Repo > Settings > Secrets. The deploy job is skipped unless all three exist. Create a `production` environment if you want approvals. |

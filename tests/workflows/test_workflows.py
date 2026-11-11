@@ -8,8 +8,8 @@ from sqlalchemy import text
 from tenderline.config import get_settings
 from tenderline.db import owner_session
 from tenderline.opportunities import ensure_opportunity
+from tenderline.workflows import ingestion, maintenance, notice_events, qualification
 from tenderline.workflows import runtime as rt
-from tenderline.workflows import tasks
 from tests.helpers import (
     add_search,
     audit_actions,
@@ -36,17 +36,17 @@ def ted(runtime, monkeypatch):
     server = FakeTed().start()
     monkeypatch.setenv("TED_BASE_URL", server.url)
     get_settings.cache_clear()
-    tasks.reset_ted_client()
+    ingestion.reset_ted_client()
     yield server
     server.stop()
     quiesce_workflows()
     monkeypatch.delenv("TED_BASE_URL")
     get_settings.cache_clear()
-    tasks.reset_ted_client()
+    ingestion.reset_ted_client()
 
 
 def run_ingest(since="2026-11-01"):
-    return DBOS.start_workflow(tasks.ingest_ted_workflow, since).get_result()
+    return DBOS.start_workflow(ingestion.ingest_ted_workflow, since).get_result()
 
 
 def test_ingestion_runs_end_to_end_from_ted_to_proposals(ted, make_org):
@@ -155,7 +155,7 @@ def test_award_notice_closes_submitted_opportunities_with_outcome(runtime, make_
     )
     res = store(award)
     assert res.awarded_notice_ids == [c.notice_id]
-    out = DBOS.start_workflow(tasks.process_notice_workflow, res.event()).get_result()
+    out = DBOS.start_workflow(notice_events.process_notice_workflow, res.event()).get_result()
     assert out["awards"]["closed_opportunities"] == 3
     st = {
         r[0]: r[1:]
@@ -231,10 +231,10 @@ def test_reconciler_starts_executions_that_never_started(runtime, make_org):
             ),
             {"o": org["org_id"], "i": pid, "u": org["user_id"]},
         )
-    DBOS.start_workflow(tasks.reconcile_approvals, datetime.now(UTC), "approvals").get_result()
+    DBOS.start_workflow(maintenance.reconcile_approvals, datetime.now(UTC), "approvals").get_result()
     wait_for(lambda: q("SELECT status FROM agent_proposals WHERE id=:i", i=pid)[0][0] == "executed", message="executed")
     DBOS.start_workflow(
-        tasks.reconcile_approvals, datetime.now(UTC), "approvals"
+        maintenance.reconcile_approvals, datetime.now(UTC), "approvals"
     ).get_result()  # second pass: nothing to do
     assert q("SELECT count(*) FROM opportunities")[0][0] == 1
     assert q("SELECT count(*) FROM audit_log WHERE action='proposal.executed'")[0][0] == 1
@@ -248,11 +248,11 @@ def test_new_saved_search_backfills_notices_that_are_already_stored(runtime, mak
     store(raw_notice(title="Cloud hosting B"))
     store(raw_notice(title="Road works", cpv=("45233120",)))  # unrelated sector
     sid = add_search(org["org_id"], cpv_codes=["72000000"])  # created AFTER the notices were ingested
-    out = DBOS.start_workflow(tasks.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
+    out = DBOS.start_workflow(qualification.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
     assert out["new_or_refreshed_matches"] == 2
     wait_for(lambda: q("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 2, message="qualified")
     assert q("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] >= 2
-    again = DBOS.start_workflow(tasks.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
+    again = DBOS.start_workflow(qualification.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
     assert again["new_or_refreshed_matches"] == 0  # idempotent
 
 
@@ -266,7 +266,7 @@ def test_backfill_caps_automatic_qualification(runtime, make_org, monkeypatch):
     monkeypatch.setenv("BACKFILL_QUALIFY_LIMIT", "2")
     get_settings.cache_clear()
     try:
-        out = DBOS.start_workflow(tasks.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
+        out = DBOS.start_workflow(qualification.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
     finally:
         monkeypatch.delenv("BACKFILL_QUALIFY_LIMIT")
         get_settings.cache_clear()

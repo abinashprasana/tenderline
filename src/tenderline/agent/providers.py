@@ -234,7 +234,7 @@ class FakeProvider:
                 actions.append(
                     {
                         "type": "assign_reviewer",
-                        "payload": {"user_id": reviewers[0]["user_id"]},
+                        "payload": {"reviewer": reviewers[0]["label"]},
                         "rationale": "Assign a reviewer to check eligibility",
                     }
                 )
@@ -298,5 +298,12 @@ def build_providers(settings: Settings) -> list[LlmProvider]:
         else:
             raise ValueError(f"unknown LLM provider {name!r}; use groq, gemini, ollama or fake")
     if not chain:
-        chain.append(FakeProvider())  # never run without a provider; keyless local default
+        if settings.env == "prod":
+            # In production a missing key must be loud. Silently scoring notices with the offline heuristic
+            # would look like real agent output.
+            raise RuntimeError(
+                "No usable LLM provider: LLM_PROVIDER_CHAIN names only providers without credentials. "
+                "Set the API keys, or add 'fake' or 'ollama' to the chain on purpose."
+            )
+        chain.append(FakeProvider())  # keyless default for local development and tests
     return chain

@@ -253,6 +253,7 @@ def add_reminders(
                 kind="reminder",
                 due_at=due,
                 source="human",
+                offset_days=days,
                 note=f"{days} days before the submission deadline",
             )
             ctx.db.add(d)

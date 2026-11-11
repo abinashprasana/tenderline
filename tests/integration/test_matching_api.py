@@ -108,8 +108,7 @@ def test_matching_creates_matches_per_tenant_with_reasons_and_audit(client, make
     mk_search(client, a["org_id"], a["user_id"], "k-a-0000001", cpv_codes=["72000000"], keywords=["cloud"])
     mk_search(client, b["org_id"], b["user_id"], "k-b-0000001", cpv_codes=["45000000"])  # different sector
     nid, _ = open_notice()
-    pairs = match_notice(nid)
-    assert {p[0] for p in pairs} == {a["org_id"]}
+    match_notice(nid)  # the saved-search backfill may already have matched it; assert the end state below
     ma = client.get(f"/v1/organisations/{a['org_id']}/matches", headers=H(a["user_id"])).json()["items"]
     assert len(ma) == 1 and ma[0]["reasons"]["cpv"] == ["72200000"] and ma[0]["reasons"]["keywords"] == ["cloud"]
     assert ma[0]["notice_title"] == "Cloud hosting services" and ma[0]["qualified_at"] is None

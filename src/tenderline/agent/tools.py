@@ -65,6 +65,7 @@ def _add_deadline_reminders(
                 due_at=due,
                 source="agent",
                 proposal_id=p.id,
+                offset_days=days,
                 note=f"{days} days before the submission deadline",
             )
         )

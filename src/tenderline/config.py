@@ -11,7 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
-    env: str = "dev"  # dev | prod | test
+    # dev | prod | test. Defaults to prod so that forgetting to set it can never enable the dev-only token endpoint.
+    env: str = "prod"
     service_name: str = "tenderline-api"
     workflows_enabled: bool = True  # start the DBOS runtime inside the API process
     log_level: str = "INFO"
@@ -50,6 +51,10 @@ class Settings(BaseSettings):
     # be qualified on demand (POST .../matches/{id}/qualify). Keeps one broad search from flooding the LLM queue.
     backfill_qualify_limit: int = 50
 
+    # Retention, applied by the daily cleanup workflow. The audit log and notice versions are kept forever.
+    workflow_retention_days: int = 30
+    idempotency_key_retention_days: int = 7
+
     # Queues
     enrich_queue_concurrency: int = 4
     qualify_queue_concurrency: int = 2
@@ -57,7 +62,7 @@ class Settings(BaseSettings):
     # LLM
     llm_provider_chain: str = "fake"  # comma separated: groq,gemini,ollama,fake
     llm_timeout_seconds: float = 60.0
-    prompt_version: str = "qualify-v1"
+    prompt_version: str = "qualify-v2"
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_model: str = "llama-3.3-70b-versatile"
@@ -65,9 +70,11 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
-    # Cost per 1M tokens in USD (input,output) per provider; 0 for local/fake.
-    llm_cost_per_mtok_in: float = 0.0
-    llm_cost_per_mtok_out: float = 0.0
+    # Price in USD per million tokens, per provider (from the provider's price list). Local providers cost 0.
+    groq_cost_per_mtok_in: float = 0.0
+    groq_cost_per_mtok_out: float = 0.0
+    gemini_cost_per_mtok_in: float = 0.0
+    gemini_cost_per_mtok_out: float = 0.0
 
     # Observability
     otel_enabled: bool = True

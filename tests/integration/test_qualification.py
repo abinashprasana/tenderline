@@ -90,20 +90,20 @@ def test_qualification_stores_proposals_only_and_executes_nothing(seeded):
 
 def test_llm_call_records_model_prompt_version_tokens_latency_cost_and_trace(seeded, monkeypatch):
     a, _, match_id, _ = seeded
-    monkeypatch.setenv("LLM_COST_PER_MTOK_IN", "0.5")
-    monkeypatch.setenv("LLM_COST_PER_MTOK_OUT", "1.5")
+    monkeypatch.setenv("GROQ_COST_PER_MTOK_IN", "0.5")
+    monkeypatch.setenv("GROQ_COST_PER_MTOK_OUT", "1.5")
     get_settings.cache_clear()
     try:
         qualify_match(a["org_id"], match_id, [Scripted("groq", [valid()])])
         row = calls(a["org_id"])[0]
         assert row[0] == "groq" and row[1] == "ok" and (row[2], row[3]) == (120, 40)
-        assert float(row[4]) == pytest.approx((120 * 0.5 + 40 * 1.5) / 1e6) and row[5] == "qualify-v1"
+        assert float(row[4]) == pytest.approx((120 * 0.5 + 40 * 1.5) / 1e6) and row[5] == "qualify-v2"
         with owner_session() as s:
             lat, model = s.execute(text("SELECT latency_ms, model FROM llm_calls")).one()
         assert lat == 17 and model == "groq-model"
     finally:
-        monkeypatch.delenv("LLM_COST_PER_MTOK_IN")
-        monkeypatch.delenv("LLM_COST_PER_MTOK_OUT")
+        monkeypatch.delenv("GROQ_COST_PER_MTOK_IN")
+        monkeypatch.delenv("GROQ_COST_PER_MTOK_OUT")
         get_settings.cache_clear()
 
 
@@ -204,31 +204,107 @@ def test_hostile_provider_output_cannot_add_actions_or_change_schema(seeded):
         assert s.execute(text("SELECT count(*) FROM opportunities")).scalar() == 0
 
 
-def test_injected_reviewer_id_from_another_tenant_is_dropped(seeded, make_org):
+def test_reviewer_ids_and_logins_never_reach_the_model(seeded):
     a, _, match_id, _ = seeded
-    other_org = make_org("Other Co")
-    attacker = other_org["user_id"]
+    reviewer = add_member(a["org_id"], "reviewer")
+    seen: list[str] = []
+
+    class Spy(Scripted):
+        def complete(self, system, user):
+            seen.append(user)
+            return super().complete(system, user)
+
+    qualify_match(a["org_id"], match_id, [Spy("groq", [valid()])])
+    with owner_session() as s:
+        logins = [r[0] for r in s.execute(text("SELECT login FROM users"))]
+    prompt = seen[0]
+    assert str(reviewer) not in prompt and str(a["user_id"]) not in prompt
+    assert not any(login in prompt for login in logins)
+    assert "reviewer-1" in prompt and "reviewer-2" in prompt
+
+
+def test_a_reviewer_label_the_server_did_not_hand_out_is_dropped(seeded):
+    a, _, match_id, _ = seeded
     actions = [
-        {"type": "assign_reviewer", "payload": {"user_id": str(attacker)}},
+        {"type": "assign_reviewer", "payload": {"reviewer": "reviewer-99"}},
         {"type": "create_opportunity", "payload": {}},
     ]
     qualify_match(a["org_id"], match_id, [Scripted("groq", [valid(80, actions)])])
-    types = [p[0] for p in proposals(a["org_id"])]
-    assert types == ["create_opportunity"]
+    assert [p[0] for p in proposals(a["org_id"])] == ["create_opportunity"]
     with owner_session() as s:
         risks = s.execute(text("SELECT after->'risks' FROM audit_log WHERE action='match.qualified'")).scalar()
     assert any("unknown reviewer" in r for r in risks)
 
 
-def test_valid_reviewer_from_the_same_org_is_kept(seeded):
+def test_a_user_id_from_another_tenant_invalidates_the_answer(seeded, make_org):
+    a, _, match_id, _ = seeded
+    attacker = make_org("Other Co")["user_id"]
+    hostile = valid(80, [{"type": "assign_reviewer", "payload": {"user_id": str(attacker)}}])
+    with pytest.raises(AgentUnavailable):
+        qualify_match(a["org_id"], match_id, [Scripted("groq", [hostile])])
+    assert proposals(a["org_id"]) == []
+
+
+def test_a_valid_reviewer_label_becomes_that_members_id(seeded):
     a, _, match_id, _ = seeded
     reviewer = add_member(a["org_id"], "reviewer")
-    qualify_match(
-        a["org_id"],
-        match_id,
-        [Scripted("groq", [valid(80, [{"type": "assign_reviewer", "payload": {"user_id": str(reviewer)}}])])],
-    )
-    assert [p[0] for p in proposals(a["org_id"])] == ["assign_reviewer"]
+    suggestion = valid(80, [{"type": "assign_reviewer", "payload": {"reviewer": "reviewer-1"}}])
+    qualify_match(a["org_id"], match_id, [Scripted("groq", [suggestion])])
+    with owner_session() as s:
+        payload = s.execute(text("SELECT payload FROM agent_proposals WHERE action_type='assign_reviewer'")).scalar()
+    assert payload["user_id"] in {str(reviewer), str(a["user_id"])}
+
+
+def test_a_cached_answer_is_rechecked_against_current_members(seeded):
+    a, _, match_id, _ = seeded
+    reviewer = add_member(a["org_id"], "reviewer")
+    suggestion = valid(80, [{"type": "assign_reviewer", "payload": {"reviewer": "reviewer-2"}}])
+    qualify_match(a["org_id"], match_id, [Scripted("groq", [suggestion])])
+    with owner_session() as s:  # the reviewer leaves, and the proposals are cleared to force a re-run from cache
+        s.execute(text("DELETE FROM agent_proposals"))
+        s.execute(text("DELETE FROM memberships WHERE user_id=:u"), {"u": reviewer})
+    again = qualify_match(a["org_id"], match_id, [Scripted("groq", [])])
+    assert again["cached"] is True and proposals(a["org_id"]) == []  # reviewer-2 no longer exists
+
+
+def test_two_saved_searches_matching_one_notice_produce_one_set_of_proposals(seeded):
+    from tenderline.matching import match_notice
+    from tests.helpers import add_search
+
+    a, notice_id, first_match, _ = seeded
+    add_search(a["org_id"], cpv_codes=[], keywords=["cloud"])  # a second search that matches the same notice
+    ((_, second_match),) = match_notice(notice_id)
+    provider = Scripted("groq", [valid()])
+    assert qualify_match(a["org_id"], first_match, [provider])["status"] == "qualified"
+    assert qualify_match(a["org_id"], second_match, [provider])["status"] == "already_qualified"
+    assert provider.n == 1 and [p[0] for p in proposals(a["org_id"])] == ["create_opportunity"]
+    with owner_session() as s:
+        assert s.execute(text("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")).scalar() == 2
+
+
+def test_the_database_refuses_a_second_pending_proposal_of_the_same_kind(seeded):
+    from sqlalchemy.exc import IntegrityError
+
+    a, notice_id, match_id, _ = seeded
+    qualify_match(a["org_id"], match_id, [Scripted("groq", [valid()])])
+    with pytest.raises(IntegrityError), owner_session() as s:  # what a racing second worker would attempt
+        s.execute(
+            text(
+                "INSERT INTO agent_proposals (organisation_id, notice_id, notice_version, action_type, payload)"
+                " VALUES (:o, :n, 1, 'create_opportunity', '{}')"
+            ),
+            {"o": a["org_id"], "n": notice_id},
+        )
+
+
+def test_production_refuses_to_fall_back_to_the_fake_provider():
+    from tenderline.agent.providers import build_providers
+    from tenderline.config import Settings
+
+    with pytest.raises(RuntimeError, match="No usable LLM provider"):
+        build_providers(Settings(env="prod", llm_provider_chain="groq,gemini", groq_api_key="", gemini_api_key=""))
+    assert build_providers(Settings(env="prod", llm_provider_chain="fake"))[0].name == "fake"  # explicit is allowed
+    assert build_providers(Settings(env="dev", llm_provider_chain="groq", groq_api_key=""))[0].name == "fake"
 
 
 def test_llm_is_only_called_for_matched_notices(seeded, make_org):

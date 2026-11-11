@@ -72,21 +72,35 @@ def test_parse_output_accepts_code_fences_but_nothing_else():
         parse_output("Sure! Here is the answer: " + json.dumps(good()))
 
 
-def test_sanitise_drops_unknown_reviewers_and_duplicates():
-    known = str(uuid.uuid4())
-    out = QualificationOutput.model_validate(
+def test_sanitise_maps_reviewer_labels_and_drops_unknown_ones_and_duplicates():
+    member = uuid.uuid4()
+    output = QualificationOutput.model_validate(
         good(
             proposed_actions=[
-                {"type": "assign_reviewer", "payload": {"user_id": str(uuid.uuid4())}},
-                {"type": "assign_reviewer", "payload": {"user_id": known}},
+                {"type": "assign_reviewer", "payload": {"reviewer": "reviewer-7"}},  # not a label we handed out
+                {"type": "assign_reviewer", "payload": {"reviewer": "reviewer-1"}},
                 {"type": "create_opportunity", "payload": {}},
                 {"type": "create_opportunity", "payload": {"note": "dup"}},
             ]
         )
     )
-    clean, dropped = sanitise(out, {known})
-    assert [a.type for a in clean.proposed_actions] == ["assign_reviewer", "create_opportunity"]
-    assert clean.proposed_actions[0].payload["user_id"] == known and len(dropped) == 2
+    actions, dropped = sanitise(output, {"reviewer-1": member})
+    assert [a.type for a in actions] == ["assign_reviewer", "create_opportunity"]
+    assert actions[0].payload == {"user_id": str(member)} and len(dropped) == 2
+
+
+def test_the_model_cannot_name_a_user_id_only_a_label():
+    for payload in ({"user_id": str(uuid.uuid4())}, {"reviewer": str(uuid.uuid4())}, {"reviewer": "admin"}):
+        with pytest.raises(ValidationError):
+            QualificationOutput.model_validate(good(proposed_actions=[{"type": "assign_reviewer", "payload": payload}]))
+
+
+def test_reviewer_labels_are_stable_and_opaque():
+    from tenderline.agent.qualify import reviewer_labels
+
+    ids = [uuid.uuid4() for _ in range(3)]
+    labels = reviewer_labels(ids)
+    assert labels == reviewer_labels(list(reversed(ids))) and set(labels) == {"reviewer-1", "reviewer-2", "reviewer-3"}
 
 
 # ------------------------------------------------------------------ prompt-injection resistance

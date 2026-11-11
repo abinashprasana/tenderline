@@ -64,6 +64,17 @@ def validate_payload(action_type: str, payload: dict[str, Any]) -> dict[str, Any
     return model.model_validate(payload).model_dump(mode="json")
 
 
+class ReviewerSuggestion(_Strict):
+    """What the model may say about a reviewer: an opaque label from the prompt, never a user id."""
+
+    reviewer: str = Field(pattern=r"^reviewer-\d{1,3}$")
+
+
+# The payloads the model is allowed to produce. Only assign_reviewer differs from what a tool accepts: the
+# server turns the label into a member id before anything is stored.
+AGENT_PAYLOAD_MODELS: dict[str, type[_Strict]] = {**PAYLOAD_MODELS, "assign_reviewer": ReviewerSuggestion}
+
+
 class ProposedAction(_Strict):
     type: Literal[
         "create_opportunity",
@@ -76,8 +87,8 @@ class ProposedAction(_Strict):
     rationale: str = Field(default="", max_length=600)
 
     def model_post_init(self, __context: Any) -> None:
-        # Validate the payload against the typed tool schema for this action.
-        validate_payload(self.type, self.payload)
+        # The payload must fit the typed schema for this action, or the whole answer is rejected.
+        AGENT_PAYLOAD_MODELS[self.type].model_validate(self.payload)
 
 
 class QualificationOutput(_Strict):
