@@ -98,7 +98,7 @@ class Notice(Base):
     source_url: Mapped[str | None] = mapped_column(Text)
     notice_type: Mapped[str] = mapped_column(String(50))
     procedure_id: Mapped[str | None] = mapped_column(String(100), index=True)
-    current_version: Mapped[int] = mapped_column(Integer, default=1)
+    current_version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
     title: Mapped[str] = mapped_column(String(500))
     summary: Mapped[str | None] = mapped_column(String(600))  # short summary only, never full buyer text
     buyer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("buyers.id"), index=True)
@@ -107,7 +107,7 @@ class Notice(Base):
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     estimated_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(3))
-    status: Mapped[str] = mapped_column(String(20), default="open")  # open | awarded
+    status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")  # open | awarded | cancelled
     award: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = _ts()
@@ -141,7 +141,7 @@ class NoticeCpv(Base):
     __tablename__ = "notice_cpv"
     notice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("notices.id"), primary_key=True)
     cpv_code: Mapped[str] = mapped_column(ForeignKey("cpv_codes.code"), primary_key=True)
-    is_main: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_main: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class IngestionRun(Base):
@@ -151,11 +151,11 @@ class IngestionRun(Base):
     window_from: Mapped[date | None] = mapped_column(Date)
     started_at: Mapped[datetime] = _ts()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running | ok | error
+    status: Mapped[str] = mapped_column(String(20), default="running", server_default="running")  # running | ok | error
     cursor: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # {"token":..., "page":..., "query":...}
-    notices_seen: Mapped[int] = mapped_column(Integer, default=0)
-    notices_new: Mapped[int] = mapped_column(Integer, default=0)
-    notices_updated: Mapped[int] = mapped_column(Integer, default=0)
+    notices_seen: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    notices_new: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    notices_updated: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     error: Mapped[str | None] = mapped_column(Text)
     workflow_id: Mapped[str | None] = mapped_column(String(200))
 
@@ -195,7 +195,9 @@ class Opportunity(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     organisation_id: Mapped[uuid.UUID] = _org_fk()
     notice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("notices.id"), index=True)
-    status: Mapped[str] = mapped_column(String(20), default="new")  # new|bid|no_bid|submitted|won|lost
+    status: Mapped[str] = mapped_column(
+        String(20), default="new", server_default="new"
+    )  # new|bid|no_bid|submitted|won|lost
     outcome: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     assigned_reviewer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     flags: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
@@ -212,7 +214,7 @@ class Deadline(Base):
     kind: Mapped[str] = mapped_column(String(30))  # submission | reminder | clarification | custom
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     note: Mapped[str | None] = mapped_column(String(500))
-    source: Mapped[str] = mapped_column(String(20), default="human")  # human | notice | agent
+    source: Mapped[str] = mapped_column(String(20), default="human", server_default="human")  # human | notice | agent
     proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
     fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _ts()
@@ -229,7 +231,7 @@ class AgentProposal(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
     rationale: Mapped[str | None] = mapped_column(Text)
     fit_score: Mapped[int | None] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String(20), default="pending")
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending")
     # pending | approved | rejected | cancelled | executed | failed
     llm_call_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
@@ -275,11 +277,11 @@ class LlmCall(Base):
     provider: Mapped[str] = mapped_column(String(30))
     model: Mapped[str] = mapped_column(String(100))
     prompt_version: Mapped[str] = mapped_column(String(40))
-    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
-    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
-    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
-    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
-    status: Mapped[str] = mapped_column(String(20), default="ok")  # ok | invalid | error
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0, server_default=text("0"))
+    status: Mapped[str] = mapped_column(String(20), default="ok", server_default="ok")  # ok | invalid | error
     output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     error: Mapped[str | None] = mapped_column(Text)
     trace_id: Mapped[str | None] = mapped_column(String(32))

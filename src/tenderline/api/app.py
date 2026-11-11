@@ -47,11 +47,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError("JWT_SECRET must be set to a unique value when ENV=prod")
     from tenderline.workflows.runtime import start_runtime, stop_runtime
 
-    start_runtime()
+    started_here = start_runtime() if s.workflows_enabled else False
     try:
         yield
     finally:
-        stop_runtime()
+        if started_here:
+            stop_runtime()
 
 
 def create_app() -> FastAPI:

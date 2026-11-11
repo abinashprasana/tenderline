@@ -122,7 +122,12 @@ def test_matching_creates_matches_per_tenant_with_reasons_and_audit(client, make
         client.get(f"/v1/organisations/{a['org_id']}/matches/{ma[0]['id']}", headers=H(c["user_id"])).status_code == 404
     )
     with owner_session() as s:
-        row = s.execute(text("SELECT actor_type, actor_id, action FROM audit_log WHERE action='match.created'")).one()
+        row = s.execute(
+            text(
+                "SELECT actor_type, actor_id, action FROM audit_log WHERE action='match.created' AND organisation_id=:o"
+            ),
+            {"o": a["org_id"]},
+        ).one()
     assert row == ("agent", "matcher-v1", "match.created")
 
 

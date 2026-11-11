@@ -10,17 +10,21 @@ import pytest
 _PORT = os.environ.get("TEST_DB_PORT", "5433")
 _HOST = os.environ.get("TEST_DB_HOST", "localhost")
 _DB = "tenderline_test"
+_DBOS_DB = os.environ.get("TEST_DBOS_DB", f"{_DB}_dbos")
 _SUPER = os.environ.get("TEST_DB_SUPERUSER_URL", f"postgresql://tenderline:tenderline@{_HOST}:{_PORT}/postgres")
 
 os.environ.update(
     ENV="test",
     DATABASE_URL=f"postgresql+psycopg://tenderline:tenderline@{_HOST}:{_PORT}/{_DB}",
     APP_DATABASE_URL=f"postgresql+psycopg://tenderline_app:tenderline_app@{_HOST}:{_PORT}/{_DB}",
-    DBOS_SYSTEM_DATABASE_URL=f"postgresql://tenderline:tenderline@{_HOST}:{_PORT}/{_DB}_dbos",
+    DBOS_SYSTEM_DATABASE_URL=f"postgresql://tenderline:tenderline@{_HOST}:{_PORT}/{_DBOS_DB}",
     JWT_SECRET="test-secret-test-secret-test-secret!",
     LLM_PROVIDER_CHAIN="fake",
     OTEL_ENABLED="false",
     RATE_LIMIT_PER_MINUTE="100000",
+    WORKFLOWS_ENABLED="false",
+    OPPORTUNITY_MAX_WAIT_SECONDS="3",
+    TED_MAX_REQUESTS_PER_MINUTE="600",
 )
 
 
@@ -31,7 +35,7 @@ def migrated_db() -> str:
     from alembic.config import Config
 
     with psycopg.connect(_SUPER, autocommit=True) as conn:
-        for name in (_DB, f"{_DB}_dbos"):
+        for name in (_DB, _DBOS_DB):
             conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
             conn.execute(f'CREATE DATABASE "{name}" OWNER tenderline')
     cfg = Config("alembic.ini")
@@ -87,3 +91,15 @@ def _no_outbound_network(monkeypatch):
         return real_connect(self, address)
 
     monkeypatch.setattr(socket.socket, "connect", guarded)
+
+
+@pytest.fixture(scope="session")
+def runtime(migrated_db):
+    """A real DBOS runtime against the test Postgres (queues registered, no cron schedule)."""
+    from tenderline.workflows import runtime as rt
+    from tests.helpers import quiesce_workflows
+
+    rt.start_runtime()
+    yield rt
+    quiesce_workflows()
+    rt.stop_runtime()

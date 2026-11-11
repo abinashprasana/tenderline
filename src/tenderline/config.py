@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     env: str = "dev"  # dev | prod | test
     service_name: str = "tenderline-api"
+    workflows_enabled: bool = True  # start the DBOS runtime inside the API process
     log_level: str = "INFO"
 
     # Databases. DATABASE_URL = table owner (migrations only). APP_DATABASE_URL = non-superuser,
@@ -41,6 +42,9 @@ class Settings(BaseSettings):
     ted_lookback_days: int = 7
     ingest_cron: str = "0 6 * * *"
     ingest_max_pages: int = 40
+
+    # Opportunity workflows wake at least this often (keeps shutdown prompt and the step history small)
+    opportunity_max_wait_seconds: int = 3600
 
     # Queues
     enrich_queue_concurrency: int = 4
