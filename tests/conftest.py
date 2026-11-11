@@ -71,3 +71,19 @@ def make_org(migrated_db):
         return {"org_id": org_id, "user_id": user_id}
 
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_network(monkeypatch):
+    """No test may reach the live TED API, a real LLM, or anything else on the internet."""
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded(self, address):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and host not in {"127.0.0.1", "::1", "localhost", "testserver"}:
+            raise RuntimeError(f"network access blocked in tests: {host}")
+        return real_connect(self, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)
