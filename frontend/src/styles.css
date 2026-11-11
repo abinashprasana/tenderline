@@ -1,0 +1,253 @@
+@import "tailwindcss";
+
+/*
+ * Atlantic night. One accent ("sea glass") for primary actions, focus and selection only. Status colours are
+ * separate from the accent and from the chart palette. The light theme is tuned on its own, not inverted.
+ * All colours in OKLCH; text pairs meet 4.5:1 and UI edges 3:1 in both themes.
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: oklch(0.17 0.03 230);
+  --bg-deep: oklch(0.14 0.03 232);
+  --surface: oklch(0.21 0.03 230);
+  --surface-2: oklch(0.25 0.03 230);
+  --surface-3: oklch(0.29 0.03 230);
+  --hairline: oklch(1 0 0 / 0.08);
+  --hairline-strong: oklch(1 0 0 / 0.16);
+  --highlight: oklch(1 0 0 / 0.05);
+  --text: oklch(0.95 0.01 230);
+  --muted: oklch(0.75 0.02 230);
+  --faint: oklch(0.6 0.02 230);
+  --accent: oklch(0.8 0.12 180);
+  --accent-hover: oklch(0.85 0.11 180);
+  --accent-fg: oklch(0.2 0.04 200);
+  --accent-soft: oklch(0.8 0.12 180 / 0.14);
+  --won: oklch(0.78 0.15 155);
+  --won-soft: oklch(0.78 0.15 155 / 0.14);
+  --lost: oklch(0.72 0.16 15);
+  --lost-soft: oklch(0.72 0.16 15 / 0.14);
+  --soon: oklch(0.82 0.14 80);
+  --soon-soft: oklch(0.82 0.14 80 / 0.14);
+  --info: oklch(0.78 0.11 235);
+  --info-soft: oklch(0.78 0.11 235 / 0.14);
+  --agent: oklch(0.76 0.06 290);
+  --agent-soft: oklch(0.76 0.06 290 / 0.12);
+  --chart-1: oklch(0.8 0.12 180);
+  --chart-2: oklch(0.74 0.12 250);
+  --chart-3: oklch(0.8 0.12 95);
+  --chart-4: oklch(0.72 0.12 320);
+  --glass: oklch(0.21 0.03 230 / 0.62);
+  --shadow: 0 1px 0 0 var(--highlight) inset, 0 12px 32px -16px oklch(0.05 0.02 230 / 0.7);
+  --glow-a: oklch(0.55 0.12 190 / 0.22);
+  --glow-b: oklch(0.45 0.1 250 / 0.2);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: oklch(0.98 0.005 90);
+  --bg-deep: oklch(0.955 0.008 90);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.97 0.006 220);
+  --surface-3: oklch(0.94 0.008 220);
+  --hairline: oklch(0.25 0.03 230 / 0.1);
+  --hairline-strong: oklch(0.25 0.03 230 / 0.2);
+  --highlight: oklch(1 0 0 / 0.7);
+  --text: oklch(0.22 0.03 230);
+  --muted: oklch(0.45 0.025 230);
+  --faint: oklch(0.56 0.02 230);
+  --accent: oklch(0.5 0.1 190);
+  --accent-hover: oklch(0.45 0.1 190);
+  --accent-fg: oklch(0.99 0.005 180);
+  --accent-soft: oklch(0.5 0.1 190 / 0.1);
+  --won: oklch(0.5 0.13 155);
+  --won-soft: oklch(0.5 0.13 155 / 0.1);
+  --lost: oklch(0.52 0.18 20);
+  --lost-soft: oklch(0.52 0.18 20 / 0.09);
+  --soon: oklch(0.55 0.13 65);
+  --soon-soft: oklch(0.7 0.14 75 / 0.16);
+  --info: oklch(0.5 0.12 245);
+  --info-soft: oklch(0.5 0.12 245 / 0.09);
+  --agent: oklch(0.48 0.08 290);
+  --agent-soft: oklch(0.48 0.08 290 / 0.08);
+  --chart-1: oklch(0.55 0.1 185);
+  --chart-2: oklch(0.52 0.13 255);
+  --chart-3: oklch(0.65 0.13 85);
+  --chart-4: oklch(0.55 0.14 330);
+  --glass: oklch(1 0 0 / 0.68);
+  --shadow: 0 1px 0 0 var(--highlight) inset, 0 10px 30px -18px oklch(0.3 0.04 230 / 0.35);
+  --glow-a: oklch(0.85 0.07 190 / 0.45);
+  --glow-b: oklch(0.88 0.05 250 / 0.5);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-deep: var(--bg-deep);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-won: var(--won);
+  --color-won-soft: var(--won-soft);
+  --color-lost: var(--lost);
+  --color-lost-soft: var(--lost-soft);
+  --color-soon: var(--soon);
+  --color-soon-soft: var(--soon-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-agent: var(--agent);
+  --color-agent-soft: var(--agent-soft);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --font-sans: "Schibsted Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+  --radius-panel: 10px;
+  --radius-input: 8px;
+  --shadow-panel: var(--shadow);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-bg font-sans text-text antialiased;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    font-feature-settings: "ss01";
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* App backdrop: still, layered light falling from the top corners, plus a faint grain. Nothing moves behind data. */
+.app-backdrop {
+  background:
+    radial-gradient(60rem 40rem at 0% -10%, var(--glow-a), transparent 60%),
+    radial-gradient(50rem 36rem at 105% -5%, var(--glow-b), transparent 60%),
+    linear-gradient(var(--bg), var(--bg-deep));
+}
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  z-index: 60;
+}
+
+/* Glass is for chrome only: sidebar, top bar, palette, dialogs, toasts, the landing hero card. */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--surface);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+:root[data-transparency="reduced"] .glass {
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-contrast: more) {
+  .glass {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--hairline-strong);
+  }
+  :root {
+    --hairline: var(--hairline-strong);
+  }
+}
+
+/* Solid content panels with a one-pixel inner highlight. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow);
+}
+
+/* The theme switch cross-fades where the View Transitions API exists. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Skeletons shimmer slowly; under reduced motion they hold still. */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2));
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+.palette-group [cmdk-group-heading] {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
