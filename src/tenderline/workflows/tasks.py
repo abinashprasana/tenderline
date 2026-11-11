@@ -489,6 +489,11 @@ def backfill_workflow(org_id: str, search_id: str, traceparent: str | None = Non
     """A new/changed saved search is matched against notices already in the database, then qualified.
     The request's trace context rides along, so API -> enrich queue -> qualify queue -> LLM is one trace."""
     match_ids = backfill_step(org_id, search_id, traceparent)
-    for match_id in match_ids:
+    to_qualify = match_ids[: get_settings().backfill_qualify_limit]
+    for match_id in to_qualify:
         DBOS.enqueue_workflow(QUEUE_QUALIFY, qualify_workflow, org_id, match_id, traceparent)
-    return {"search_id": search_id, "new_or_refreshed_matches": len(match_ids)}
+    return {
+        "search_id": search_id,
+        "new_or_refreshed_matches": len(match_ids),
+        "qualification_enqueued": len(to_qualify),
+    }

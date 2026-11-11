@@ -11,3 +11,4 @@
 - **DBOS**: see ADR 0001 for the event-loop, `send` and executor-id findings.
 - **Histogram buckets.** The OpenTelemetry SDK default buckets assume milliseconds, which made a 24 ms p95 read as ~4.7 s in seconds-based metrics; explicit bucket boundaries are set for HTTP and LLM latency.
 - **Database defaults** for status/counter columns live in the database (migration 0004), not only in the ORM.
+- **Saved-search backfill is capped.** Creating a saved search matches it against stored open notices (not in the brief, but a new search must show today's opportunities). A k6 write test that created hundreds of searches once queued ~43,000 qualification workflows and starved the queues, so a backfill now auto-qualifies at most `BACKFILL_QUALIFY_LIMIT` (default 50, newest first); the remaining matches stay visible and can be qualified on demand with `POST /v1/organisations/{id}/matches/{match_id}/qualify`.

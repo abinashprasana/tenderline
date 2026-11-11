@@ -254,3 +254,22 @@ def test_new_saved_search_backfills_notices_that_are_already_stored(runtime, mak
     assert q("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] >= 2
     again = DBOS.start_workflow(tasks.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
     assert again["new_or_refreshed_matches"] == 0  # idempotent
+
+
+def test_backfill_caps_automatic_qualification(runtime, make_org, monkeypatch):
+    reset_notice_tables()
+    org = make_org("Acme Hosting")
+    set_profile(org["org_id"], capabilities=["cloud hosting"], regions=["IRL"])
+    for i in range(5):
+        store(raw_notice(title=f"Cloud hosting {i}"))
+    sid = add_search(org["org_id"], cpv_codes=["72000000"])
+    monkeypatch.setenv("BACKFILL_QUALIFY_LIMIT", "2")
+    get_settings.cache_clear()
+    try:
+        out = DBOS.start_workflow(tasks.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
+    finally:
+        monkeypatch.delenv("BACKFILL_QUALIFY_LIMIT")
+        get_settings.cache_clear()
+    assert out["new_or_refreshed_matches"] == 5 and out["qualification_enqueued"] == 2
+    wait_for(lambda: q("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 2, message="2 qualified")
+    assert q("SELECT count(*) FROM matches")[0][0] == 5  # the rest are matched, awaiting on-demand qualification

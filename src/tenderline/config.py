@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # Opportunity workflows wake at least this often (keeps shutdown prompt and the step history small)
     opportunity_max_wait_seconds: int = 3600
 
+    # A saved-search backfill auto-qualifies at most this many matches (newest first); the rest stay matched and can
+    # be qualified on demand (POST .../matches/{id}/qualify). Keeps one broad search from flooding the LLM queue.
+    backfill_qualify_limit: int = 50
+
     # Queues
     enrich_queue_concurrency: int = 4
     qualify_queue_concurrency: int = 2
