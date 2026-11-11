@@ -13,6 +13,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -115,7 +116,12 @@ class Notice(Base):
 
 class NoticeVersion(Base):
     __tablename__ = "notice_versions"
-    __table_args__ = (UniqueConstraint("notice_id", "version"),)
+    __table_args__ = (
+        UniqueConstraint("notice_id", "version"),
+        # Find a notice by its eForms identifier, or by the identifier a change notice points at.
+        Index("ix_notice_versions_notice_identifier", text("(fields ->> 'notice_identifier')")),
+        Index("ix_notice_versions_changed_notice_identifier", text("(fields ->> 'changed_notice_identifier')")),
+    )
     id: Mapped[uuid.UUID] = _uuid_pk()
     notice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("notices.id"), index=True)
     version: Mapped[int] = mapped_column(Integer)
@@ -151,11 +157,13 @@ class IngestionRun(Base):
     window_from: Mapped[date | None] = mapped_column(Date)
     started_at: Mapped[datetime] = _ts()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(String(20), default="running", server_default="running")  # running | ok | error
+    # running | ok | error | abandoned
+    status: Mapped[str] = mapped_column(String(20), default="running", server_default="running")
     cursor: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # {"token":..., "page":..., "query":...}
     notices_seen: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     notices_new: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     notices_updated: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    notices_skipped: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     error: Mapped[str | None] = mapped_column(Text)
     workflow_id: Mapped[str | None] = mapped_column(String(200))
 
@@ -216,12 +224,27 @@ class Deadline(Base):
     note: Mapped[str | None] = mapped_column(String(500))
     source: Mapped[str] = mapped_column(String(20), default="human", server_default="human")  # human | notice | agent
     proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    # For "N days before the submission deadline" reminders: N. Lets a corrigendum move them with the deadline.
+    offset_days: Mapped[int | None] = mapped_column(Integer)
     fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _ts()
 
 
 class AgentProposal(Base):
     __tablename__ = "agent_proposals"
+    # At most one pending proposal of each action per organisation and notice version. This is what stops two
+    # saved searches (or two concurrent workers) from producing the same proposal twice.
+    __table_args__ = (
+        Index(
+            "uq_agent_proposals_pending_action",
+            "organisation_id",
+            "notice_id",
+            "notice_version",
+            "action_type",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
     id: Mapped[uuid.UUID] = _uuid_pk()
     organisation_id: Mapped[uuid.UUID] = _org_fk()
     match_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("matches.id"), index=True)

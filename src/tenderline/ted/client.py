@@ -29,6 +29,7 @@ SEARCH_FIELDS = [
     "procedure-identifier",
     "notice-type",
     "notice-version",
+    "change-notice-version-identifier",
     "notice-title",
     "buyer-name",
     "buyer-country",
@@ -132,6 +133,11 @@ class TedClient:
                 continue
             if resp.status_code == 200:
                 data: dict[str, Any] = resp.json()
+                if data.get("timedOut"):
+                    # TED answered 200 but its search timed out, so the page may be incomplete. Ask again.
+                    last_error = "search timed out on the TED side"
+                    self._sleep(self.backoff_delay(attempt))
+                    continue
                 return data
             if resp.status_code == 429 or resp.status_code >= 500:
                 retry_after = parse_retry_after(resp.headers.get("Retry-After"))

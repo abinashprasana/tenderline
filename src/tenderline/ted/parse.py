@@ -31,6 +31,7 @@ class ParsedNotice:
     title: str
     source_url: str
     notice_identifier: str | None = None
+    changed_notice_identifier: str | None = None  # set on change notices: the notice this one corrects
     procedure_id: str | None = None
     source_version: int | None = None
     summary: str | None = None
@@ -57,6 +58,7 @@ class ParsedNotice:
         return {
             "publication_number": self.source_id,
             "notice_identifier": self.notice_identifier,
+            "changed_notice_identifier": self.changed_notice_identifier,
             "procedure_id": self.procedure_id,
             "source_version": self.source_version,
             "notice_type": self.notice_type,
@@ -73,6 +75,19 @@ class ParsedNotice:
             "lots": self.lots,
             "award": self.award,
         }
+
+
+_VERSION_SUFFIX = re.compile(r"-\d{1,3}$")
+
+
+def changed_notice_identifier(value: Any) -> str | None:
+    """A change notice names the notice it corrects as "<notice-identifier>-<version>", e.g.
+    "47ac9b70-671f-4cc5-a97b-7ea62b383718-01" (checked against live TED data). Return the identifier part."""
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if not isinstance(value, str) or not value:
+        return None
+    return _VERSION_SUFFIX.sub("", value)
 
 
 def notice_kind(notice_type: str) -> str:
@@ -210,6 +225,7 @@ def parse_ted_notice(raw: dict[str, Any]) -> ParsedNotice:
         title=title,
         source_url=f"https://ted.europa.eu/en/notice/{pub}/html",
         notice_identifier=raw.get("notice-identifier"),
+        changed_notice_identifier=changed_notice_identifier(raw.get("change-notice-version-identifier")),
         procedure_id=raw.get("procedure-identifier"),
         source_version=raw.get("notice-version"),
         summary=summary,
