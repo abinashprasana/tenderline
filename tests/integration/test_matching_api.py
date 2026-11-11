@@ -13,6 +13,7 @@ from tenderline.db import owner_session, public_session
 from tenderline.matching import match_notice
 from tenderline.security import create_token
 from tenderline.ted.parse import parse_ted_notice
+from tests.helpers import quiesce_workflows
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "ted"
 
@@ -58,7 +59,11 @@ def open_notice(title="Cloud hosting services", cpv=("72200000",), value="100000
 
 def mk_search(client, org, user, key, **body):
     body = {"name": "s", **body}
-    return client.post(f"/v1/organisations/{org}/saved-searches", json=body, headers=auth_headers(user, key))
+    response = client.post(f"/v1/organisations/{org}/saved-searches", json=body, headers=auth_headers(user, key))
+    # If an earlier test started the workflow runtime, the new search's backfill runs now; let it finish so
+    # it cannot match notices these tests store next and match by hand.
+    quiesce_workflows()
+    return response
 
 
 def test_saved_search_validation(client, make_org):
