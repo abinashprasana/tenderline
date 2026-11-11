@@ -39,7 +39,7 @@ def approved(org, notice_id, action, payload):
     return pid
 
 
-def q(sql, **p):
+def query_rows(sql, **p):
     with owner_session() as s:
         return s.execute(text(sql), p).all()
 
@@ -60,8 +60,8 @@ def test_create_opportunity_is_get_or_create_and_adds_the_notice_deadline(world)
     r2 = run_proposal(org["org_id"], approved(org, notice_id, "create_opportunity", {"note": "again"}))
     assert r1["result"]["created"] is True and r2["result"]["created"] is False
     assert r1["result"]["opportunity_id"] == r2["result"]["opportunity_id"]
-    assert q("SELECT count(*) FROM opportunities")[0][0] == 1
-    assert q("SELECT kind, source FROM deadlines") == [("submission", "notice")]
+    assert query_rows("SELECT count(*) FROM opportunities")[0][0] == 1
+    assert query_rows("SELECT kind, source FROM deadlines") == [("submission", "notice")]
 
 
 def test_reminders_count_back_from_the_deadline_and_skip_past_ones(world):
@@ -74,7 +74,7 @@ def test_reminders_count_back_from_the_deadline_and_skip_past_ones(world):
     assert res["status"] == "executed" and len(res["result"]["reminders"]) == 1 and res["result"]["skipped_past"] == 2
     far = run_proposal(org["org_id"], approved(org, notice_id, "add_deadline_reminders", {"days_before": [14, 7, 2]}))
     assert len(far["result"]["reminders"]) == 3
-    assert q("SELECT count(*) FROM deadlines WHERE kind='reminder' AND source='agent'")[0][0] == 4
+    assert query_rows("SELECT count(*) FROM deadlines WHERE kind='reminder' AND source='agent'")[0][0] == 4
 
 
 def test_reminders_fail_cleanly_when_the_notice_has_no_deadline(world):
@@ -86,7 +86,7 @@ def test_reminders_fail_cleanly_when_the_notice_has_no_deadline(world):
     nid = store(raw).notice_id
     res = run_proposal(org["org_id"], approved(org, nid, "add_deadline_reminders", {"days_before": [7]}))
     assert res["status"] == "failed" and "no tender deadline" in res["result"]["error"]
-    assert q("SELECT count(*) FROM deadlines WHERE kind='reminder'")[0][0] == 0
+    assert query_rows("SELECT count(*) FROM deadlines WHERE kind='reminder'")[0][0] == 0
 
 
 def test_assign_reviewer_requires_a_reviewer_capable_member(world):
@@ -94,10 +94,10 @@ def test_assign_reviewer_requires_a_reviewer_capable_member(world):
     reviewer, viewer = add_member(org["org_id"], "reviewer"), add_member(org["org_id"], "viewer")
     ok = run_proposal(org["org_id"], approved(org, notice_id, "assign_reviewer", {"user_id": str(reviewer)}))
     assert ok["status"] == "executed"
-    assert q("SELECT assigned_reviewer_id FROM opportunities")[0][0] == reviewer
+    assert query_rows("SELECT assigned_reviewer_id FROM opportunities")[0][0] == reviewer
     bad = run_proposal(org["org_id"], approved(org, notice_id, "assign_reviewer", {"user_id": str(viewer)}))
-    assert bad["status"] == "failed" and q("SELECT assigned_reviewer_id FROM opportunities")[0][0] == reviewer
-    assert "opportunity.reviewer_assigned" in [r[0] for r in q("SELECT action FROM audit_log")]
+    assert bad["status"] == "failed" and query_rows("SELECT assigned_reviewer_id FROM opportunities")[0][0] == reviewer
+    assert "opportunity.reviewer_assigned" in [r[0] for r in query_rows("SELECT action FROM audit_log")]
 
 
 def test_draft_clarification_is_stored_as_a_draft_and_never_sent(world):
@@ -109,18 +109,20 @@ def test_draft_clarification_is_stored_as_a_draft_and_never_sent(world):
         ),
     )
     assert res["status"] == "executed" and res["result"]["drafts"] == 1
-    drafts = q("SELECT flags->'clarification_drafts' FROM opportunities")[0][0]
+    drafts = query_rows("SELECT flags->'clarification_drafts' FROM opportunities")[0][0]
     assert drafts[0]["status"] == "draft" and "evaluation weighting" in drafts[0]["question"]
-    assert q("SELECT count(*) FROM audit_log WHERE action LIKE '%sent%'")[0][0] == 0
+    assert query_rows("SELECT count(*) FROM audit_log WHERE action LIKE '%sent%'")[0][0] == 0
 
 
 def test_mark_no_bid_closes_the_opportunity_and_records_the_reason(world):
     org, notice_id = world
     res = run_proposal(org["org_id"], approved(org, notice_id, "mark_no_bid", {"reason": "Outside our region"}))
     assert res["status"] == "executed"
-    status, closed, outcome = q("SELECT status, closed_at IS NOT NULL, outcome->>'reason' FROM opportunities")[0]
+    status, closed, outcome = query_rows("SELECT status, closed_at IS NOT NULL, outcome->>'reason' FROM opportunities")[
+        0
+    ]
     assert (status, closed, outcome) == ("no_bid", True, "Outside our region")
-    assert q("SELECT actor_type FROM audit_log WHERE action='opportunity.status_changed'")[0][0] == "human"
+    assert query_rows("SELECT actor_type FROM audit_log WHERE action='opportunity.status_changed'")[0][0] == "human"
 
 
 def test_mark_no_bid_refuses_after_submission(world):
@@ -129,7 +131,7 @@ def test_mark_no_bid_refuses_after_submission(world):
     with owner_session() as s:
         s.execute(text("UPDATE opportunities SET status='submitted'"))
     res = run_proposal(org["org_id"], approved(org, notice_id, "mark_no_bid", {"reason": "changed our mind"}))
-    assert res["status"] == "failed" and q("SELECT status FROM opportunities")[0][0] == "submitted"
+    assert res["status"] == "failed" and query_rows("SELECT status FROM opportunities")[0][0] == "submitted"
 
 
 def test_a_failing_tool_leaves_no_partial_writes(world):
@@ -141,5 +143,5 @@ def test_a_failing_tool_leaves_no_partial_writes(world):
     nid = store(raw).notice_id
     run_proposal(org["org_id"], approved(org, nid, "add_deadline_reminders", {"days_before": [7]}))
     # ensure_opportunity ran inside the failed tool; its rows must have been rolled back with the savepoint
-    assert q("SELECT count(*) FROM opportunities")[0][0] == 0
+    assert query_rows("SELECT count(*) FROM opportunities")[0][0] == 0
     assert raw_notice

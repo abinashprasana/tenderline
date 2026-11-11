@@ -40,6 +40,9 @@ class ProposalOut(BaseModel):
     action_type: str
     payload: dict[str, Any]
     rationale: str | None
+    # The rationale and any drafted text were written by the model from public notice text. Clients should
+    # show them as machine-generated suggestions, never as instructions or verified facts.
+    generated_by: str = "agent"
     fit_score: int | None
     status: str
     result: dict[str, Any] | None
@@ -67,7 +70,7 @@ class RejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
-def _out_many(db: Any, proposals: list[AgentProposal]) -> list[ProposalOut]:
+def serialize_proposals(db: Any, proposals: list[AgentProposal]) -> list[ProposalOut]:
     """Serialise proposals with their approvals using one extra query, not one per row."""
     ids = [p.id for p in proposals]
     approvals = (
@@ -89,8 +92,8 @@ def _out_many(db: Any, proposals: list[AgentProposal]) -> list[ProposalOut]:
     return out
 
 
-def _out(db: Any, p: AgentProposal) -> ProposalOut:
-    return _out_many(db, [p])[0]
+def serialize_proposal(db: Any, p: AgentProposal) -> ProposalOut:
+    return serialize_proposals(db, [p])[0]
 
 
 @router.get("", response_model=ProposalPage, summary="List proposals (newest first)")
@@ -111,7 +114,7 @@ def list_proposals(
     if match_id:
         stmt = stmt.where(AgentProposal.match_id == match_id)
     rows, nxt = paginate(ctx.db, stmt, AgentProposal.created_at, AgentProposal.id, cursor, limit)
-    return ProposalPage(items=_out_many(ctx.db, rows), next_cursor=nxt)
+    return ProposalPage(items=serialize_proposals(ctx.db, rows), next_cursor=nxt)
 
 
 @router.get("/{proposal_id}", response_model=ProposalOut)
@@ -119,10 +122,10 @@ def get_proposal(org_id: uuid.UUID, proposal_id: uuid.UUID, ctx: CanRead) -> Pro
     p = ctx.db.get(AgentProposal, proposal_id)
     if p is None:
         raise not_found("Proposal")
-    return _out(ctx.db, p)
+    return serialize_proposal(ctx.db, p)
 
 
-def _decide(
+def _record_decision(
     ctx: TenantContext,
     org_id: uuid.UUID,
     proposal_id: uuid.UUID,
@@ -197,7 +200,7 @@ def _decide(
             before=before,
             after={"status": p.status, "edited_payload": final_payload, "reason": reason},
         )
-        return 200, _out(ctx.db, p)
+        return 200, serialize_proposal(ctx.db, p)
 
     resp = run_idempotent(ctx.db, org_id, key, payload, run)
     if resp.status_code == 200 and decision != "rejected" and "idempotent-replay" not in resp.headers:
@@ -216,7 +219,7 @@ def approve(
     key: IdempotencyKeyHeader,
     bg: BackgroundTasks,
 ) -> JSONResponse:
-    return _decide(
+    return _record_decision(
         ctx,
         org_id,
         proposal_id,
@@ -237,7 +240,7 @@ def edit_approve(
     key: IdempotencyKeyHeader,
     bg: BackgroundTasks,
 ) -> JSONResponse:
-    return _decide(
+    return _record_decision(
         ctx,
         org_id,
         proposal_id,
@@ -259,7 +262,7 @@ def reject(
     key: IdempotencyKeyHeader,
     bg: BackgroundTasks,
 ) -> JSONResponse:
-    return _decide(
+    return _record_decision(
         ctx,
         org_id,
         proposal_id,

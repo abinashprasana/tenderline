@@ -92,7 +92,7 @@ def wf_status(db: str, wid: str) -> str | None:
     return row[0] if row else None
 
 
-def q(sql, **p):
+def query_rows(sql, **p):
     with owner_session() as s:
         return s.execute(text(sql), p).all()
 
@@ -116,21 +116,23 @@ def test_opportunity_timer_survives_a_killed_process_and_fires_exactly_once(cras
     workers.append(a)
     a.wait_ready()
     wait_for(lambda: wf_status(db, wid) == "PENDING", message="workflow pending")
-    assert not q("SELECT 1 FROM audit_log WHERE action='reminder.fired'")
+    assert not query_rows("SELECT 1 FROM audit_log WHERE action='reminder.fired'")
     a.kill()  # process dies while the workflow sleeps toward the reminder
     assert wf_status(db, wid) == "PENDING"
-    assert q("SELECT fired_at IS NULL FROM deadlines WHERE kind='reminder'")[0][0] is True
+    assert query_rows("SELECT fired_at IS NULL FROM deadlines WHERE kind='reminder'")[0][0] is True
     b = Worker(db, "serve")  # a brand-new process recovers the pending workflow on launch
     workers.append(b)
     b.wait_ready()
     wait_for(
-        lambda: len(q("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) >= 1,
+        lambda: len(query_rows("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) >= 1,
         timeout=60,
         message="reminder fired",
     )
     time.sleep(8)  # idle wake-ups after firing must not repeat it
-    assert len(q("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) == 1
-    assert q("SELECT note, fired_at IS NOT NULL FROM deadlines WHERE kind='reminder'") == [("crash-test", True)]
+    assert len(query_rows("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) == 1
+    assert query_rows("SELECT note, fired_at IS NOT NULL FROM deadlines WHERE kind='reminder'") == [
+        ("crash-test", True)
+    ]
     assert wf_status(db, wid) == "PENDING"  # still tracking the opportunity after recovery
 
 
@@ -141,7 +143,7 @@ def test_action_executes_exactly_once_when_the_process_dies_after_the_tool_commi
     set_profile(org["org_id"], capabilities=["cloud hosting"], regions=["IRL"])
     notice_id, match_id, _ = seed_match(org["org_id"])
     qualify_match(org["org_id"], match_id, [FakeProvider()])
-    pid = q("SELECT id FROM agent_proposals WHERE action_type='add_deadline_reminders'")[0][0]
+    pid = query_rows("SELECT id FROM agent_proposals WHERE action_type='add_deadline_reminders'")[0][0]
     with owner_session() as s:  # a human approved it
         s.execute(text("UPDATE agent_proposals SET status='approved', decided_at=now() WHERE id=:i"), {"i": pid})
         s.execute(
@@ -155,18 +157,18 @@ def test_action_executes_exactly_once_when_the_process_dies_after_the_tool_commi
     workers.append(a)
     # The process commits the tool's writes, then dies before DBOS can checkpoint the step.
     assert a.proc.wait(timeout=120) == 86
-    assert q("SELECT status FROM agent_proposals WHERE id=:i", i=pid)[0][0] == "executed"
-    assert q("SELECT count(*) FROM deadlines WHERE kind='reminder'")[0][0] == 3
+    assert query_rows("SELECT status FROM agent_proposals WHERE id=:i", i=pid)[0][0] == "executed"
+    assert query_rows("SELECT count(*) FROM deadlines WHERE kind='reminder'")[0][0] == 3
     assert wf_status(db, wid) == "PENDING"  # DBOS has not recorded the step as done
     b = Worker(db, "serve")  # recovery re-runs the step: it must find the work already done
     workers.append(b)
     b.wait_ready()
     wait_for(lambda: wf_status(db, wid) == "SUCCESS", timeout=90, message="workflow recovered and finished")
-    assert q("SELECT count(*) FROM deadlines WHERE kind='reminder'")[0][0] == 3  # not 6
-    assert q("SELECT count(*) FROM audit_log WHERE action='proposal.executed'")[0][0] == 1
-    assert q("SELECT count(*) FROM opportunities")[0][0] == 1
+    assert query_rows("SELECT count(*) FROM deadlines WHERE kind='reminder'")[0][0] == 3  # not 6
+    assert query_rows("SELECT count(*) FROM audit_log WHERE action='proposal.executed'")[0][0] == 1
+    assert query_rows("SELECT count(*) FROM opportunities")[0][0] == 1
     # recovery also started the opportunity workflow exactly once
-    opp_id = q("SELECT id FROM opportunities")[0][0]
+    opp_id = query_rows("SELECT id FROM opportunities")[0][0]
     wait_for(
         lambda: wf_status(db, f"opp-{opp_id}") in ("PENDING", "SUCCESS"), timeout=30, message="opportunity workflow"
     )

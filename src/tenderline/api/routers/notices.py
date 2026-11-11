@@ -71,7 +71,7 @@ class NoticeFilters(BaseModel):
     deadline_after: datetime | None = None
 
 
-def _filters(
+def notice_filters(
     q: str | None = None,
     cpv: Annotated[str | None, Query(description="CPV code or prefix, e.g. 72 or 72200000")] = None,
     buyer: str | None = None,
@@ -129,7 +129,7 @@ def apply_filters(stmt: Select[Any], f: NoticeFilters) -> Select[Any]:
     return stmt
 
 
-def to_out(db: Session, notices: list[Notice]) -> list[NoticeOut]:
+def serialize_notices(db: Session, notices: list[Notice]) -> list[NoticeOut]:
     ids = [n.id for n in notices]
     cpvs: dict[uuid.UUID, list[str]] = {i: [] for i in ids}
     for nid, code in db.execute(
@@ -151,13 +151,13 @@ def to_out(db: Session, notices: list[Notice]) -> list[NoticeOut]:
 @router.get("", response_model=NoticePage, summary="List and filter notices (newest first, cursor pagination)")
 def list_notices(
     _: RateLimitedUserId,
-    f: Annotated[NoticeFilters, Depends(_filters)],
+    f: Annotated[NoticeFilters, Depends(notice_filters)],
     cursor: str | None = None,
     limit: int = 50,
 ) -> NoticePage:
     with public_session() as db:
         rows, nxt = paginate(db, apply_filters(select(Notice), f), Notice.created_at, Notice.id, cursor, limit)
-        return NoticePage(items=to_out(db, rows), next_cursor=nxt)
+        return NoticePage(items=serialize_notices(db, rows), next_cursor=nxt)
 
 
 @router.get("/{notice_id}", response_model=NoticeOut)
@@ -166,7 +166,7 @@ def get_notice(notice_id: uuid.UUID, _: RateLimitedUserId) -> NoticeOut:
         n = db.get(Notice, notice_id)
         if n is None:
             raise not_found("Notice")
-        return to_out(db, [n])[0]
+        return serialize_notices(db, [n])[0]
 
 
 @router.get("/{notice_id}/versions", response_model=list[VersionOut], summary="Version history (corrigenda)")

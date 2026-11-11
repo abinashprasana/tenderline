@@ -18,7 +18,7 @@ def client(migrated_db):
         yield c
 
 
-def H(user_id):
+def auth_headers(user_id):
     return {"Authorization": f"Bearer {create_token(user_id)}"}
 
 
@@ -44,58 +44,65 @@ def test_error_model_and_request_id(client):
 
 def test_validation_errors_use_the_same_model(client, make_org):
     a = make_org()
-    r = client.patch(f"/v1/organisations/{a['org_id']}", json={"name": "x"}, headers=H(a["user_id"]))
+    r = client.patch(f"/v1/organisations/{a['org_id']}", json={"name": "x"}, headers=auth_headers(a["user_id"]))
     assert r.status_code == 422 and r.json()["error"]["code"] == "validation_error"
 
 
 def test_tenant_a_cannot_read_or_change_tenant_b(client, make_org):
     a, b = make_org("Tenant A"), make_org("Tenant B")
     # A's user addressing B's organisation: 404, indistinguishable from a missing organisation.
-    assert client.get(f"/v1/organisations/{b['org_id']}", headers=H(a["user_id"])).status_code == 404
-    r = client.patch(f"/v1/organisations/{b['org_id']}", json={"name": "Hacked"}, headers=H(a["user_id"]))
+    assert client.get(f"/v1/organisations/{b['org_id']}", headers=auth_headers(a["user_id"])).status_code == 404
+    r = client.patch(f"/v1/organisations/{b['org_id']}", json={"name": "Hacked"}, headers=auth_headers(a["user_id"]))
     assert r.status_code == 404
-    assert client.get(f"/v1/organisations/{b['org_id']}/members", headers=H(a["user_id"])).status_code == 404
+    assert client.get(f"/v1/organisations/{b['org_id']}/members", headers=auth_headers(a["user_id"])).status_code == 404
     with owner_session() as s:
         assert s.execute(text("SELECT name FROM organisations WHERE id=:i"), {"i": b["org_id"]}).scalar() == "Tenant B"
     # and B is untouched / reachable by its own owner
-    assert client.get(f"/v1/organisations/{b['org_id']}", headers=H(b["user_id"])).json()["name"] == "Tenant B"
+    assert (
+        client.get(f"/v1/organisations/{b['org_id']}", headers=auth_headers(b["user_id"])).json()["name"] == "Tenant B"
+    )
 
 
 def test_role_checks(client, make_org):
     a = make_org()
     viewer, mgr = add_user(a["org_id"], "viewer"), add_user(a["org_id"], "bid_manager")
     url = f"/v1/organisations/{a['org_id']}"
-    assert client.get(url, headers=H(viewer)).status_code == 200
-    assert client.patch(url, json={"timezone": "Europe/Dublin"}, headers=H(viewer)).status_code == 403
-    assert client.patch(url, json={"timezone": "Europe/Dublin"}, headers=H(mgr)).status_code == 403
-    r = client.patch(url, json={"name": "Renamed Ltd"}, headers=H(a["user_id"]))
+    assert client.get(url, headers=auth_headers(viewer)).status_code == 200
+    assert client.patch(url, json={"timezone": "Europe/Dublin"}, headers=auth_headers(viewer)).status_code == 403
+    assert client.patch(url, json={"timezone": "Europe/Dublin"}, headers=auth_headers(mgr)).status_code == 403
+    r = client.patch(url, json={"name": "Renamed Ltd"}, headers=auth_headers(a["user_id"]))
     assert r.status_code == 200 and r.json()["name"] == "Renamed Ltd"
 
 
 def test_create_org_is_idempotent_and_makes_caller_owner(client, make_org):
     uid = make_org()["user_id"]
-    key = {"Idempotency-Key": "create-org-0001", **H(uid)}
+    key = {"Idempotency-Key": "create-org-0001", **auth_headers(uid)}
     r1 = client.post("/v1/organisations", json={"name": "Fresh Co"}, headers=key)
     r2 = client.post("/v1/organisations", json={"name": "Fresh Co"}, headers=key)
     assert r1.status_code == 201 and r2.status_code == 200 and r1.json()["id"] == r2.json()["id"]
     assert r2.headers["Idempotent-Replay"] == "true"
-    me = client.get("/v1/me", headers=H(uid)).json()
+    me = client.get("/v1/me", headers=auth_headers(uid)).json()
     assert {m["organisation_id"]: m["role"] for m in me["memberships"]}[r1.json()["id"]] == "owner"
-    assert client.post("/v1/organisations", json={"name": "Fresh Co"}, headers=H(uid)).status_code == 422
+    assert client.post("/v1/organisations", json={"name": "Fresh Co"}, headers=auth_headers(uid)).status_code == 422
 
 
 def test_last_owner_cannot_be_demoted_or_removed(client, make_org):
     a = make_org()
     base = f"/v1/organisations/{a['org_id']}/members/{a['user_id']}"
-    assert client.patch(base, json={"role": "viewer"}, headers=H(a["user_id"])).json()["error"]["code"] == "last_owner"
-    assert client.delete(base, headers=H(a["user_id"])).status_code == 409
+    assert (
+        client.patch(base, json={"role": "viewer"}, headers=auth_headers(a["user_id"])).json()["error"]["code"]
+        == "last_owner"
+    )
+    assert client.delete(base, headers=auth_headers(a["user_id"])).status_code == 409
 
 
 def test_membership_changes_are_audited(client, make_org):
     a = make_org()
     other = add_user(a["org_id"], "viewer")
     r = client.patch(
-        f"/v1/organisations/{a['org_id']}/members/{other}", json={"role": "reviewer"}, headers=H(a["user_id"])
+        f"/v1/organisations/{a['org_id']}/members/{other}",
+        json={"role": "reviewer"},
+        headers=auth_headers(a["user_id"]),
     )
     assert r.status_code == 200
     with owner_session() as s:
@@ -132,11 +139,14 @@ def test_rate_limit_per_organisation(client, make_org, monkeypatch):
     get_settings.cache_clear()
     try:
         a, b = make_org(), make_org()
-        codes = [client.get(f"/v1/organisations/{a['org_id']}", headers=H(a["user_id"])).status_code for _ in range(5)]
+        codes = [
+            client.get(f"/v1/organisations/{a['org_id']}", headers=auth_headers(a["user_id"])).status_code
+            for _ in range(5)
+        ]
         assert codes == [200, 200, 200, 429, 429]
-        r = client.get(f"/v1/organisations/{a['org_id']}", headers=H(a["user_id"]))
+        r = client.get(f"/v1/organisations/{a['org_id']}", headers=auth_headers(a["user_id"]))
         assert r.json()["error"]["code"] == "rate_limited" and "Retry-After" in r.headers
-        assert client.get(f"/v1/organisations/{b['org_id']}", headers=H(b["user_id"])).status_code == 200
+        assert client.get(f"/v1/organisations/{b['org_id']}", headers=auth_headers(b["user_id"])).status_code == 200
     finally:
         monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "100000")
         get_settings.cache_clear()
@@ -161,11 +171,11 @@ def test_add_member_is_idempotent(client, make_org):
     with owner_session() as s:
         login = s.execute(text("SELECT login FROM users WHERE id=:i"), {"i": other}).scalar()
     url = f"/v1/organisations/{a['org_id']}/members"
-    h = {"Idempotency-Key": "add-member-0001", **H(a["user_id"])}
+    h = {"Idempotency-Key": "add-member-0001", **auth_headers(a["user_id"])}
     r1 = client.post(url, json={"login": login, "role": "reviewer"}, headers=h)
     r2 = client.post(url, json={"login": login, "role": "reviewer"}, headers=h)
     assert r1.status_code == 201 and r2.status_code == 201 and r2.headers["Idempotent-Replay"] == "true"
-    h2 = {"Idempotency-Key": "add-member-0001", **H(a["user_id"])}
+    h2 = {"Idempotency-Key": "add-member-0001", **auth_headers(a["user_id"])}
     assert client.post(url, json={"login": login, "role": "viewer"}, headers=h2).status_code == 422
 
 
@@ -174,9 +184,9 @@ def test_shared_notice_endpoints_are_rate_limited_per_user(client, make_org, mon
     get_settings.cache_clear()
     try:
         first, second = make_org()["user_id"], make_org()["user_id"]
-        codes = [client.get("/v1/notices?limit=1", headers=H(first)).status_code for _ in range(3)]
+        codes = [client.get("/v1/notices?limit=1", headers=auth_headers(first)).status_code for _ in range(3)]
         assert codes == [200, 200, 429]
-        assert client.get("/v1/notices?limit=1", headers=H(second)).status_code == 200
+        assert client.get("/v1/notices?limit=1", headers=auth_headers(second)).status_code == 200
     finally:
         monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "100000")
         get_settings.cache_clear()

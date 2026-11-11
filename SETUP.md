@@ -17,6 +17,12 @@ Nothing here is needed to run locally (`docker compose up`). These are for produ
 | **Langfuse** (optional) | LLM traces | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | Off when keys are empty. |
 | **GitHub Actions secrets** | Deploy job | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` | Repo > Settings > Secrets. The deploy job is skipped unless all three exist. Create a `production` environment if you want approvals. |
 
+## Things to know before production
+
+- The app defaults to `ENV=prod`. The dev token endpoint exists only when you set `ENV=dev`.
+- With `ENV=prod`, at least one LLM provider in `LLM_PROVIDER_CHAIN` needs a key, or the app refuses to qualify notices. Add `fake` or `ollama` to the chain on purpose if that is what you want.
+- Set `APP_VERSION` to the release you deploy (the CI uses the git SHA tag). Open opportunities move to the new release within 10 minutes.
+
 ## First production deploy
 
 1. `terraform apply` (after reviewing the plan), note `public_ip`, create the DNS record.

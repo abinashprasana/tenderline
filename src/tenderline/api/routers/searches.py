@@ -97,7 +97,7 @@ class MatchPage(BaseModel):
     next_cursor: str | None
 
 
-def _snap(s: SavedSearch) -> dict[str, Any]:
+def _search_snapshot(s: SavedSearch) -> dict[str, Any]:
     return {
         "name": s.name,
         "cpv_codes": s.cpv_codes,
@@ -127,7 +127,7 @@ def create_search(
             action="saved_search.created",
             entity_type="saved_search",
             entity_id=s.id,
-            after=_snap(s),
+            after=_search_snapshot(s),
         )
         bg.add_task(runtime.enqueue_backfill, org_id, s.id)  # after commit: match existing open notices
         return 201, SearchOut.model_validate(s)
@@ -158,7 +158,7 @@ def replace_search(
     org_id: uuid.UUID, search_id: uuid.UUID, payload: SearchIn, ctx: CanWrite, bg: BackgroundTasks
 ) -> SavedSearch:
     s = _get_search(ctx, search_id)
-    before = _snap(s)
+    before = _search_snapshot(s)
     for k, v in payload.model_dump().items():
         setattr(s, k, v)
     ctx.db.flush()
@@ -171,7 +171,7 @@ def replace_search(
         entity_type="saved_search",
         entity_id=s.id,
         before=before,
-        after=_snap(s),
+        after=_search_snapshot(s),
     )
     return s
 
@@ -181,7 +181,7 @@ def patch_search(
     org_id: uuid.UUID, search_id: uuid.UUID, payload: SearchPatch, ctx: CanWrite, bg: BackgroundTasks
 ) -> SavedSearch:
     s = _get_search(ctx, search_id)
-    before = _snap(s)
+    before = _search_snapshot(s)
     if payload.name is not None:
         s.name = payload.name
     if payload.active is not None:
@@ -196,7 +196,7 @@ def patch_search(
         entity_type="saved_search",
         entity_id=s.id,
         before=before,
-        after=_snap(s),
+        after=_search_snapshot(s),
     )
     return s
 
@@ -217,7 +217,7 @@ def delete_search(org_id: uuid.UUID, search_id: uuid.UUID, ctx: CanWrite) -> Non
         action="saved_search.deleted",
         entity_type="saved_search",
         entity_id=search_id,
-        before=_snap(s),
+        before=_search_snapshot(s),
     )
 
 
@@ -239,10 +239,10 @@ def list_matches(
     if qualified is not None:
         stmt = stmt.where(Match.qualified_at.is_not(None) if qualified else Match.qualified_at.is_(None))
     rows, nxt = paginate(ctx.db, stmt, Match.created_at, Match.id, cursor, limit)
-    return MatchPage(items=_match_out(ctx, rows), next_cursor=nxt)
+    return MatchPage(items=serialize_matches(ctx, rows), next_cursor=nxt)
 
 
-def _match_out(ctx: TenantContext, rows: list[Match]) -> list[MatchOut]:
+def serialize_matches(ctx: TenantContext, rows: list[Match]) -> list[MatchOut]:
     notices = {n.id: n for n in ctx.db.scalars(select(Notice).where(Notice.id.in_([m.notice_id for m in rows])))}
     return [
         MatchOut(
@@ -265,7 +265,7 @@ def get_match(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanRead) -> MatchOut:
     m = ctx.db.get(Match, match_id)
     if m is None:
         raise not_found("Match")
-    return _match_out(ctx, [m])[0]
+    return serialize_matches(ctx, [m])[0]
 
 
 @router.post(

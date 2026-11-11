@@ -19,3 +19,14 @@ DBOS, with its state in a separate database (`tenderline_dbos`) on the same Post
 - Workflow code must be deterministic; side effects live in steps.
 - Findings while implementing (verified against the docs and package): DBOS's sync API cannot run inside a live event loop, so the runtime starts from a worker thread in the FastAPI lifespan; `DBOS.send` belongs in workflow bodies, not steps; `DBOS.recv(timeout)` is used as the durable timer, with a configurable cap per wake-up so shutdown stays prompt. Two processes sharing an executor id would recover each other's workflows, so CLI commands enqueue through `DBOSClient` instead of launching a second runtime.
 - Lock-in is moderate (decorators); the domain logic is plain functions.
+
+## Measured later: what a waiting workflow costs
+Each open opportunity has one workflow parked in `DBOS.recv`. We measured 300 waiting workflows in DBOS 3.5.0 three ways: sync workflows, coroutine workflows started from sync code or a queue, and coroutine workflows with DBOS launched inside the event loop. All three used roughly one thread per waiting workflow (307 to 501 threads). Releasing the thread needs `suspend=True`, which the docs say requires DBOS Transact Enterprise. So converting to async buys nothing here, and the workflow stays sync.
+
+The executor pool is unbounded (`max_executor_threads` defaults to no limit), so parked workflows cannot starve queue work; the cost is memory. That is fine for hundreds of open opportunities on the 12 GB VM. For thousands, either license suspend mode or replace the parked workflow with delayed queue entries (`SetEnqueueOptions(delay_seconds=...)`), which hold no thread.
+
+## Deploys and application versions
+DBOS resumes only the workflows started by the same `application_version`. Without care, every deploy would strand the previous release's opportunity workflows and reminders would stop without any error. Two things prevent that: `APP_VERSION` identifies the release, and the `opportunity-workflow-reconciler` schedule (every 10 minutes) starts a fresh workflow for any open opportunity that has no live workflow on the running version. Firing a reminder is exactly-once at the row level, so an old and a new workflow overlapping is harmless.
+
+## Retention
+Finished workflow records are deleted after `WORKFLOW_RETENTION_DAYS` (default 30) by the `daily-cleanup` schedule, together with idempotency keys older than `IDEMPOTENCY_KEY_RETENTION_DAYS`. One load test had left 43,000 workflow rows. The audit log and notice versions are never deleted.

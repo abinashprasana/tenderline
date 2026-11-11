@@ -24,7 +24,7 @@ _started = False
 
 def application_version() -> str:
     """DBOS resumes only the workflows started by this version, so it must change with every release."""
-    return os.environ.get("APP_VERSION", __version__)
+    return os.environ.get("APP_VERSION") or __version__
 
 
 def dbos_config() -> DBOSConfig:

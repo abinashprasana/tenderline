@@ -25,7 +25,7 @@ from tests.workflows.fake_ted import FakeTed
 pytestmark = pytest.mark.workflow
 
 
-def q(sql, **p):
+def query_rows(sql, **p):
     with owner_session() as s:
         return s.execute(text(sql), p).all()
 
@@ -55,20 +55,23 @@ def test_ingestion_runs_end_to_end_from_ted_to_proposals(ted, make_org):
     add_search(org["org_id"], cpv_codes=[], keywords=[], countries=["IRL"])
     out = run_ingest()
     assert out["complete"] is True and out["pages"] == 2 and out["events"] == 4
-    run = q("SELECT status, notices_seen, notices_new, cursor->>'page', window_from::text FROM ingestion_runs")[0]
+    run = query_rows(
+        "SELECT status, notices_seen, notices_new, cursor->>'page', window_from::text FROM ingestion_runs"
+    )[0]
     assert run[0] == "ok" and run[1] == 4 and run[2] == 4 and run[4] == "2026-11-01"
     bodies = ted.requests
     assert "buyer-country=IRL" in bodies[0]["query"] and "publication-date>=20261101" in bodies[0]["query"]
     assert bodies[0]["paginationMode"] == "ITERATION" and "iterationNextToken" not in bodies[0]
     assert bodies[1]["iterationNextToken"] == ted.p1["iterationNextToken"]  # token chained into page 2
-    assert q("SELECT count(*) FROM notices WHERE source='ted'")[0][0] == 4
+    assert query_rows("SELECT count(*) FROM notices WHERE source='ted'")[0][0] == 4
     # enrichment queue -> matching -> qualification queue -> proposals (all async)
-    wait_for(lambda: q("SELECT count(*) FROM matches")[0][0] == 4, message="4 matches")
+    wait_for(lambda: query_rows("SELECT count(*) FROM matches")[0][0] == 4, message="4 matches")
     wait_for(
-        lambda: q("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 4, message="qualification"
+        lambda: query_rows("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 4,
+        message="qualification",
     )
-    assert q("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] >= 4
-    assert q("SELECT count(*) FROM opportunities")[0][0] == 0  # still nothing executed without approval
+    assert query_rows("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] >= 4
+    assert query_rows("SELECT count(*) FROM opportunities")[0][0] == 0  # still nothing executed without approval
 
 
 def test_rerunning_ingestion_is_safe_and_creates_nothing_new(ted, make_org):
@@ -76,23 +79,24 @@ def test_rerunning_ingestion_is_safe_and_creates_nothing_new(ted, make_org):
     add_search(org["org_id"], cpv_codes=[], keywords=[], countries=["IRL"])
     run_ingest()
     wait_for(
-        lambda: q("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 4, message="first run done"
+        lambda: query_rows("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 4,
+        message="first run done",
     )
     quiesce_workflows()
     before = (
-        q("SELECT count(*) FROM notices")[0][0],
-        q("SELECT count(*) FROM agent_proposals")[0][0],
-        q("SELECT count(*) FROM notice_versions")[0][0],
+        query_rows("SELECT count(*) FROM notices")[0][0],
+        query_rows("SELECT count(*) FROM agent_proposals")[0][0],
+        query_rows("SELECT count(*) FROM notice_versions")[0][0],
     )
     run_ingest()
     quiesce_workflows()
     after = (
-        q("SELECT count(*) FROM notices")[0][0],
-        q("SELECT count(*) FROM agent_proposals")[0][0],
-        q("SELECT count(*) FROM notice_versions")[0][0],
+        query_rows("SELECT count(*) FROM notices")[0][0],
+        query_rows("SELECT count(*) FROM agent_proposals")[0][0],
+        query_rows("SELECT count(*) FROM notice_versions")[0][0],
     )
     assert before == after
-    runs = q("SELECT status, notices_new, notices_seen FROM ingestion_runs ORDER BY started_at")
+    runs = query_rows("SELECT status, notices_new, notices_seen FROM ingestion_runs ORDER BY started_at")
     assert [r[0] for r in runs] == ["ok", "ok"] and runs[1][1] == 0 and runs[1][2] == 4
 
 
@@ -110,8 +114,8 @@ def test_ingestion_resumes_from_the_last_cursor(ted):
     out = run_ingest()
     assert out["resumed"] is True and out["complete"] is True
     assert ted.requests[0]["iterationNextToken"] == token  # did not restart from page 1
-    assert q("SELECT count(*) FROM ingestion_runs")[0][0] == 1  # continued the same run row
-    run = q("SELECT status, notices_seen FROM ingestion_runs")[0]
+    assert query_rows("SELECT count(*) FROM ingestion_runs")[0][0] == 1  # continued the same run row
+    run = query_rows("SELECT status, notices_seen FROM ingestion_runs")[0]
     assert run == ("ok", 4)
 
 
@@ -119,7 +123,7 @@ def test_ingestion_failure_is_recorded_and_the_workflow_errors(ted):
     ted.fail_with = 400
     with pytest.raises(Exception, match="HTTP 400"):
         run_ingest()
-    run = q("SELECT status, error FROM ingestion_runs")[0]
+    run = query_rows("SELECT status, error FROM ingestion_runs")[0]
     assert run[0] == "error" and "HTTP 400" in run[1]
 
 
@@ -159,12 +163,12 @@ def test_award_notice_closes_submitted_opportunities_with_outcome(runtime, make_
     assert out["awards"]["closed_opportunities"] == 3
     st = {
         r[0]: r[1:]
-        for r in q("SELECT id::text, status, outcome->>'matched_by', closed_at IS NOT NULL FROM opportunities")
+        for r in query_rows("SELECT id::text, status, outcome->>'matched_by', closed_at IS NOT NULL FROM opportunities")
     }
     assert st[str(opps["won"])] == ("won", "organisation name", True)
     assert st[str(opps["lost"])][0] == "lost" and st[str(opps["idle"])][0] == "no_bid"
-    assert q("SELECT status FROM notices WHERE id=:n", n=c.notice_id)[0][0] == "awarded"
-    assert q("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] == 0  # cancelled on award
+    assert query_rows("SELECT status FROM notices WHERE id=:n", n=c.notice_id)[0][0] == "awarded"
+    assert query_rows("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] == 0  # cancelled on award
     assert "opportunity.status_changed" in audit_actions(won["org_id"])
 
 
@@ -186,18 +190,18 @@ def test_opportunity_workflow_sleeps_then_fires_each_reminder_once_and_ends_when
                 {"o": org["org_id"], "p": opp_id, "s": secs, "n": note},
             )
     rt.start_opportunity_workflow(org["org_id"], opp_id, wid)
-    assert not q("SELECT 1 FROM audit_log WHERE action='reminder.fired'")  # it is sleeping, not firing early
+    assert not query_rows("SELECT 1 FROM audit_log WHERE action='reminder.fired'")  # it is sleeping, not firing early
     wait_for(
-        lambda: len(q("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) == 2,
+        lambda: len(query_rows("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) == 2,
         timeout=40,
         message="both reminders",
     )
-    fired = q("SELECT note, fired_at IS NOT NULL FROM deadlines WHERE kind='reminder' ORDER BY due_at")
+    fired = query_rows("SELECT note, fired_at IS NOT NULL FROM deadlines WHERE kind='reminder' ORDER BY due_at")
     assert fired == [("first", True), ("second", True)]
     import time
 
     time.sleep(4)  # idle iterations must not re-fire anything
-    assert len(q("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) == 2
+    assert len(query_rows("SELECT 1 FROM audit_log WHERE action='reminder.fired'")) == 2
     handle = DBOS.retrieve_workflow(wid)
     assert handle.get_status().status == "PENDING"  # still tracking until award / close
     # closing the opportunity (status change + signal) ends the workflow
@@ -232,12 +236,15 @@ def test_reconciler_starts_executions_that_never_started(runtime, make_org):
             {"o": org["org_id"], "i": pid, "u": org["user_id"]},
         )
     DBOS.start_workflow(maintenance.reconcile_approvals, datetime.now(UTC), "approvals").get_result()
-    wait_for(lambda: q("SELECT status FROM agent_proposals WHERE id=:i", i=pid)[0][0] == "executed", message="executed")
+    wait_for(
+        lambda: query_rows("SELECT status FROM agent_proposals WHERE id=:i", i=pid)[0][0] == "executed",
+        message="executed",
+    )
     DBOS.start_workflow(
         maintenance.reconcile_approvals, datetime.now(UTC), "approvals"
     ).get_result()  # second pass: nothing to do
-    assert q("SELECT count(*) FROM opportunities")[0][0] == 1
-    assert q("SELECT count(*) FROM audit_log WHERE action='proposal.executed'")[0][0] == 1
+    assert query_rows("SELECT count(*) FROM opportunities")[0][0] == 1
+    assert query_rows("SELECT count(*) FROM audit_log WHERE action='proposal.executed'")[0][0] == 1
 
 
 def test_new_saved_search_backfills_notices_that_are_already_stored(runtime, make_org):
@@ -250,8 +257,11 @@ def test_new_saved_search_backfills_notices_that_are_already_stored(runtime, mak
     sid = add_search(org["org_id"], cpv_codes=["72000000"])  # created AFTER the notices were ingested
     out = DBOS.start_workflow(qualification.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
     assert out["new_or_refreshed_matches"] == 2
-    wait_for(lambda: q("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 2, message="qualified")
-    assert q("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] >= 2
+    wait_for(
+        lambda: query_rows("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 2,
+        message="qualified",
+    )
+    assert query_rows("SELECT count(*) FROM agent_proposals WHERE status='pending'")[0][0] >= 2
     again = DBOS.start_workflow(qualification.backfill_workflow, str(org["org_id"]), str(sid)).get_result()
     assert again["new_or_refreshed_matches"] == 0  # idempotent
 
@@ -271,5 +281,10 @@ def test_backfill_caps_automatic_qualification(runtime, make_org, monkeypatch):
         monkeypatch.delenv("BACKFILL_QUALIFY_LIMIT")
         get_settings.cache_clear()
     assert out["new_or_refreshed_matches"] == 5 and out["qualification_enqueued"] == 2
-    wait_for(lambda: q("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 2, message="2 qualified")
-    assert q("SELECT count(*) FROM matches")[0][0] == 5  # the rest are matched, awaiting on-demand qualification
+    wait_for(
+        lambda: query_rows("SELECT count(*) FROM matches WHERE qualified_at IS NOT NULL")[0][0] == 2,
+        message="2 qualified",
+    )
+    assert (
+        query_rows("SELECT count(*) FROM matches")[0][0] == 5
+    )  # the rest are matched, awaiting on-demand qualification

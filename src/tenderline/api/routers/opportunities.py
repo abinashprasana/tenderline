@@ -71,12 +71,14 @@ class RemindersIn(BaseModel):
     days_before: list[int] = Field(min_length=1, max_length=6)
 
 
-def _titles(db: Any, opps: list[Opportunity]) -> dict[uuid.UUID, str]:
+def _notice_titles(db: Any, opps: list[Opportunity]) -> dict[uuid.UUID, str]:
     ids = {o.notice_id for o in opps}
     return dict(db.execute(select(Notice.id, Notice.title).where(Notice.id.in_(ids))).all()) if ids else {}
 
 
-def _opp_out(db: Any, o: Opportunity, with_children: bool = True, title: str | None = None) -> OpportunityOut:
+def serialize_opportunity(
+    db: Any, o: Opportunity, with_children: bool = True, title: str | None = None
+) -> OpportunityOut:
     if title is None:
         notice = db.get(Notice, o.notice_id)
         title = notice.title if notice else ""
@@ -122,12 +124,12 @@ def list_opportunities(
     if notice_id:
         stmt = stmt.where(Opportunity.notice_id == notice_id)
     rows, nxt = paginate(ctx.db, stmt, Opportunity.created_at, Opportunity.id, cursor, limit)
-    titles = _titles(ctx.db, rows)
-    items = [_opp_out(ctx.db, o, with_children=False, title=titles.get(o.notice_id, "")) for o in rows]
+    titles = _notice_titles(ctx.db, rows)
+    items = [serialize_opportunity(ctx.db, o, with_children=False, title=titles.get(o.notice_id, "")) for o in rows]
     return OpportunityPage(items=items, next_cursor=nxt)
 
 
-def _get(ctx: TenantContext, opp_id: uuid.UUID) -> Opportunity:
+def _get_opportunity(ctx: TenantContext, opp_id: uuid.UUID) -> Opportunity:
     o = ctx.db.get(Opportunity, opp_id)
     if o is None:
         raise not_found("Opportunity")
@@ -136,7 +138,7 @@ def _get(ctx: TenantContext, opp_id: uuid.UUID) -> Opportunity:
 
 @router.get("/opportunities/{opp_id}", response_model=OpportunityOut)
 def get_opportunity(org_id: uuid.UUID, opp_id: uuid.UUID, ctx: CanRead) -> OpportunityOut:
-    return _opp_out(ctx.db, _get(ctx, opp_id))
+    return serialize_opportunity(ctx.db, _get_opportunity(ctx, opp_id))
 
 
 @router.post(
@@ -154,7 +156,7 @@ def create_opportunity(
         )
         if created:
             bg.add_task(runtime.start_opportunity_workflow, org_id, opp.id, opp.workflow_id or f"opp-{opp.id}")
-        return (201 if created else 200), _opp_out(ctx.db, opp)
+        return (201 if created else 200), serialize_opportunity(ctx.db, opp)
 
     return run_idempotent(ctx.db, org_id, key, payload, run)
 
@@ -167,7 +169,7 @@ def create_opportunity(
 def set_status(
     org_id: uuid.UUID, opp_id: uuid.UUID, payload: StatusIn, ctx: CanWrite, bg: BackgroundTasks
 ) -> OpportunityOut:
-    opp = _get(ctx, opp_id)
+    opp = _get_opportunity(ctx, opp_id)
     old_wid = opp.workflow_id
     change_status(
         ctx.db, org_id, opp, payload.status, actor_type="human", actor_id=str(ctx.user_id), reason=payload.reason
@@ -176,13 +178,13 @@ def set_status(
         bg.add_task(runtime.start_opportunity_workflow, org_id, opp.id, opp.workflow_id)
     else:
         bg.add_task(runtime.notify_opportunity, opp.workflow_id, "status_changed")
-    return _opp_out(ctx.db, opp)
+    return serialize_opportunity(ctx.db, opp)
 
 
 # ------------------------------------------------------------------ deadlines and reminders
 @router.get("/opportunities/{opp_id}/deadlines", response_model=list[DeadlineOut])
 def list_deadlines(org_id: uuid.UUID, opp_id: uuid.UUID, ctx: CanRead) -> list[Deadline]:
-    _get(ctx, opp_id)
+    _get_opportunity(ctx, opp_id)
     return list(ctx.db.scalars(select(Deadline).where(Deadline.opportunity_id == opp_id).order_by(Deadline.due_at)))
 
 
@@ -195,7 +197,7 @@ def add_deadline(
     key: IdempotencyKeyHeader,
     bg: BackgroundTasks,
 ) -> JSONResponse:
-    opp = _get(ctx, opp_id)
+    opp = _get_opportunity(ctx, opp_id)
 
     def run() -> tuple[int, Any]:
         if payload.due_at <= datetime.now(UTC):
@@ -240,7 +242,7 @@ def add_reminders(
     key: IdempotencyKeyHeader,
     bg: BackgroundTasks,
 ) -> JSONResponse:
-    opp = _get(ctx, opp_id)
+    opp = _get_opportunity(ctx, opp_id)
 
     def run() -> tuple[int, Any]:
         sub = ctx.db.scalars(

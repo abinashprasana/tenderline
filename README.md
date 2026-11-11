@@ -26,7 +26,7 @@ flowchart LR
   OC --> T[Tempo] & P[Prometheus] & L[Loki] --> G[Grafana]
 ```
 
-DBOS stores workflow state in a second database on the same Postgres instance (`tenderline_dbos`).
+DBOS stores workflow state in a second database on the same Postgres instance (`tenderline_dbos`). Three small schedules keep things honest: one restarts approved actions whose start was lost to a crash, one gives every open opportunity a live workflow after a deploy, and one deletes old workflow records.
 
 ## Data model
 

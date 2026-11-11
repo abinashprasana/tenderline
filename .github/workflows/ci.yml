@@ -121,5 +121,5 @@ jobs:
           scp -i key -o StrictHostKeyChecking=accept-new -r docker-compose.prod.yml deploy docker scripts "$SSH_USER@$HOST:/opt/tenderline/"
           $SSH "cd /opt/tenderline && echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USER' --password-stdin \
             && TENDERLINE_IMAGE=${IMAGE,,}:sha-${GITHUB_SHA::7} docker compose -f docker-compose.prod.yml --env-file .env pull app \
-            && TENDERLINE_IMAGE=${IMAGE,,}:sha-${GITHUB_SHA::7} docker compose -f docker-compose.prod.yml --env-file .env up -d"
+            && APP_VERSION=${GITHUB_SHA::7} TENDERLINE_IMAGE=${IMAGE,,}:sha-${GITHUB_SHA::7} docker compose -f docker-compose.prod.yml --env-file .env up -d"
           rm -f key

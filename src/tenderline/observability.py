@@ -33,7 +33,7 @@ _tracer = trace.get_tracer("tenderline")
 _meter = metrics.get_meter("tenderline")
 
 
-def _make_instruments() -> dict[str, Any]:
+def _create_instruments() -> dict[str, Any]:
     return {
         "http": _meter.create_histogram(
             "tenderline.http.request.duration",
@@ -54,7 +54,7 @@ def _make_instruments() -> dict[str, Any]:
     }
 
 
-_inst = _make_instruments()
+_instruments = _create_instruments()
 
 
 def current_trace_id() -> str | None:
@@ -70,24 +70,24 @@ def record_exception(exc: BaseException) -> None:
 
 
 def record_http(method: str, route: str, status: int, seconds: float) -> None:
-    _inst["http"].record(seconds, {"http.method": method, "http.route": route, "http.status_code": status})
+    _instruments["http"].record(seconds, {"http.method": method, "http.route": route, "http.status_code": status})
 
 
 def record_llm_call(org_id: str, provider: str, model: str, latency_ms: int, cost_usd: float, status: str) -> None:
     attrs = {"org_id": org_id, "provider": provider, "model": model, "status": status}
-    _inst["llm_calls"].add(1, attrs)
+    _instruments["llm_calls"].add(1, attrs)
     if status == "ok":
-        _inst["llm_cost"].add(cost_usd, attrs)
-        _inst["llm_latency"].record(latency_ms, attrs)
+        _instruments["llm_cost"].add(cost_usd, attrs)
+        _instruments["llm_latency"].record(latency_ms, attrs)
 
 
 def record_ingested(count: int, source: str) -> None:
     if count:
-        _inst["ingested"].add(count, {"source": source})
+        _instruments["ingested"].add(count, {"source": source})
 
 
 def record_workflow_failure(name: str) -> None:
-    _inst["wf_failures"].add(1, {"workflow": name})
+    _instruments["wf_failures"].add(1, {"workflow": name})
 
 
 # ------------------------------------------------------------------------------------------ tracing helpers
@@ -231,7 +231,7 @@ class _LlmSpanFilter:
 
 def setup_telemetry(service_name: str | None = None, *, span_exporter: Any = None) -> None:
     """Idempotent. Installs a tracer provider (so trace ids exist) and exports only if configured."""
-    global _configured, _tracer, _meter, _inst
+    global _configured, _tracer, _meter, _instruments
     if _configured:
         return
     s = get_settings()
@@ -292,7 +292,7 @@ def setup_telemetry(service_name: str | None = None, *, span_exporter: Any = Non
         )
         logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=logger_provider))
         _meter = metrics.get_meter("tenderline")
-        _inst = _make_instruments()  # instruments made before the provider existed were no-op proxies
+        _instruments = _create_instruments()  # instruments made before the provider existed were no-op proxies
         _register_gauges()
     _configured = True
 

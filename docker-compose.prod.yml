@@ -26,6 +26,7 @@ services:
       db: {condition: service_healthy}
     environment:
       ENV: prod
+      APP_VERSION: ${APP_VERSION:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+psycopg://tenderline:${POSTGRES_PASSWORD}@db:5432/tenderline
       APP_DATABASE_URL: postgresql+psycopg://tenderline_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD}@db:5432/tenderline
