@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 import httpx
 import jwt
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Cookie, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -39,76 +39,108 @@ class DevTokenIn(BaseModel):
     role: str = "owner"
 
 
-def _state_token() -> str:
-    s = get_settings()
-    claims = {"n": secrets.token_urlsafe(12), "exp": int(time.time()) + 600, "p": "gh-oauth"}
-    return jwt.encode(claims, s.jwt_secret, algorithm="HS256")
+STATE_COOKIE = "tenderline_oauth_state"
+STATE_TTL_SECONDS = 600
 
 
-def _check_state(state: str) -> None:
+def _new_state() -> tuple[str, str]:
+    """Return (state, nonce). The signed state goes to GitHub; the nonce goes into a cookie on this browser."""
+    nonce = secrets.token_urlsafe(24)
+    claims = {"nonce": nonce, "exp": int(time.time()) + STATE_TTL_SECONDS, "purpose": "github-oauth"}
+    return jwt.encode(claims, get_settings().jwt_secret, algorithm="HS256"), nonce
+
+
+def _check_state(state: str, cookie_nonce: str | None) -> None:
+    """The state must be ours, unexpired, and issued to the browser that is now completing the login.
+
+    Without the cookie check an attacker could start a login, then get a victim's browser to finish it and
+    leave the victim signed in to the attacker's account (login CSRF).
+    """
     try:
         claims = jwt.decode(state, get_settings().jwt_secret, algorithms=["HS256"])
     except jwt.PyJWTError as exc:
         raise ApiError(400, "invalid_state", "OAuth state is invalid or expired") from exc
-    if claims.get("p") != "gh-oauth":
-        raise ApiError(400, "invalid_state", "OAuth state is invalid")
+    nonce = str(claims.get("nonce", ""))
+    if claims.get("purpose") != "github-oauth" or not cookie_nonce or not secrets.compare_digest(nonce, cookie_nonce):
+        raise ApiError(400, "invalid_state", "OAuth state does not belong to this browser session")
 
 
 @router.get("/auth/github/login", summary="Start GitHub OAuth login")
-def github_login() -> dict[str, str]:
-    s = get_settings()
-    if not s.github_client_id or not s.github_client_secret:
+def github_login(response: Response) -> dict[str, str]:
+    settings = get_settings()
+    if not settings.github_client_id or not settings.github_client_secret:
         raise ApiError(503, "github_oauth_not_configured", "GitHub OAuth is not configured (see SETUP.md)")
+    state, nonce = _new_state()
+    response.set_cookie(
+        STATE_COOKIE,
+        nonce,
+        max_age=STATE_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=settings.github_redirect_uri.startswith("https://"),
+        path="/v1/auth/github",
+    )
     params = httpx.QueryParams(
         {
-            "client_id": s.github_client_id,
-            "redirect_uri": s.github_redirect_uri,
+            "client_id": settings.github_client_id,
+            "redirect_uri": settings.github_redirect_uri,
             "scope": "read:user user:email",
-            "state": _state_token(),
+            "state": state,
         }
     )
     return {"authorize_url": f"{GITHUB_AUTHORIZE}?{params}"}
 
 
 @router.get("/auth/github/callback", response_model=TokenOut, summary="GitHub OAuth callback; issues a JWT")
-def github_callback(code: Annotated[str, Query()], state: Annotated[str, Query()]) -> TokenOut:
-    s = get_settings()
-    if not s.github_client_id:
+def github_callback(
+    code: Annotated[str, Query()],
+    state: Annotated[str, Query()],
+    response: Response,
+    state_nonce: Annotated[str | None, Cookie(alias=STATE_COOKIE)] = None,
+) -> TokenOut:
+    settings = get_settings()
+    if not settings.github_client_id:
         raise ApiError(503, "github_oauth_not_configured", "GitHub OAuth is not configured (see SETUP.md)")
-    _check_state(state)
+    _check_state(state, state_nonce)
+    response.delete_cookie(STATE_COOKIE, path="/v1/auth/github")
     try:
-        with httpx.Client(timeout=15) as client:
-            tok = client.post(
+        with httpx.Client(timeout=15) as github:
+            token_reply = github.post(
                 GITHUB_TOKEN,
                 json={
-                    "client_id": s.github_client_id,
-                    "client_secret": s.github_client_secret,
+                    "client_id": settings.github_client_id,
+                    "client_secret": settings.github_client_secret,
                     "code": code,
-                    "redirect_uri": s.github_redirect_uri,
+                    "redirect_uri": settings.github_redirect_uri,
                 },
                 headers={"Accept": "application/json"},
             ).json()
-            access = tok.get("access_token")
-            if not access:
+            access_token = token_reply.get("access_token") if isinstance(token_reply, dict) else None
+            if not access_token:
                 raise ApiError(400, "oauth_exchange_failed", "GitHub rejected the authorisation code")
-            gh: dict[str, Any] = client.get(
+            profile = github.get(
                 GITHUB_USER,
-                headers={"Authorization": f"Bearer {access}", "Accept": "application/vnd.github+json"},
+                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
             ).json()
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ValueError) as exc:
         raise ApiError(502, "github_unreachable", "Could not reach GitHub") from exc
+    # GitHub answers errors (rate limit, revoked token) with a JSON body that has no id or login.
+    if not isinstance(profile, dict) or not isinstance(profile.get("id"), int) or not profile.get("login"):
+        raise ApiError(502, "github_profile_unavailable", "GitHub did not return a user profile")
     with public_session() as db:
-        stmt = (
+        upsert = (
             pg_insert(User)
-            .values(github_id=gh["id"], login=gh["login"], email=gh.get("email"), name=gh.get("name"))
+            .values(
+                github_id=profile["id"], login=profile["login"], email=profile.get("email"), name=profile.get("name")
+            )
             .on_conflict_do_update(
                 index_elements=["github_id"],
-                set_={"login": gh["login"], "email": gh.get("email"), "name": gh.get("name")},
+                set_={"login": profile["login"], "email": profile.get("email"), "name": profile.get("name")},
             )
             .returning(User.id)
         )
-        user_id = db.execute(stmt).scalar_one()
-    return TokenOut(access_token=create_token(user_id), user_id=user_id, login=gh["login"])
+        user_id = db.execute(upsert).scalar_one()
+    return TokenOut(access_token=create_token(user_id), user_id=user_id, login=profile["login"])
 
 
 @router.post("/auth/dev-token", response_model=TokenOut, summary="DEV ONLY: mint a token without OAuth")

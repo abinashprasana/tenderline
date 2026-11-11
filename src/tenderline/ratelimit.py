@@ -1,4 +1,8 @@
-"""Per-organisation fixed-window rate limiter (in-process; one API process per VM, see docs/adr)."""
+"""Fixed-window rate limiter, counted per organisation (or per user on shared-data endpoints).
+
+It lives in process memory, which is correct while the API runs as one process (see docs/adr/0004). Running
+several API processes would need a shared counter instead.
+"""
 
 from __future__ import annotations
 
@@ -10,29 +14,45 @@ from tenderline.config import get_settings
 from tenderline.errors import ApiError
 
 _lock = threading.Lock()
-_windows: dict[uuid.UUID, tuple[int, int]] = {}
+_request_counts: dict[uuid.UUID, tuple[int, int]] = {}  # subject -> (minute window, requests in it)
+_PRUNE_ABOVE = 10_000
 
 
-def check(org_id: uuid.UUID) -> None:
+def _prune(current_window: int) -> None:
+    """Forget subjects whose last request was in an earlier minute, so the table cannot grow without limit."""
+    stale = [subject for subject, (window, _) in _request_counts.items() if window != current_window]
+    for subject in stale:
+        del _request_counts[subject]
+
+
+def check(subject_id: uuid.UUID) -> None:
+    """Count one request for this organisation or user; raise 429 once the minute's allowance is used up."""
     limit = get_settings().rate_limit_per_minute
-    window = int(time.time() // 60)
+    current_window = int(time.time() // 60)
     with _lock:
-        w, count = _windows.get(org_id, (window, 0))
-        if w != window:
-            w, count = window, 0
+        window, count = _request_counts.get(subject_id, (current_window, 0))
+        if window != current_window:
+            count = 0
         count += 1
-        _windows[org_id] = (w, count)
+        _request_counts[subject_id] = (current_window, count)
+        if len(_request_counts) > _PRUNE_ABOVE:
+            _prune(current_window)
     if count > limit:
-        retry = 60 - int(time.time() % 60)
+        seconds_left = 60 - int(time.time() % 60)
         raise ApiError(
             429,
             "rate_limited",
-            "Organisation rate limit exceeded",
+            "Rate limit exceeded",
             {"limit_per_minute": limit},
-            headers={"Retry-After": str(retry)},
+            headers={"Retry-After": str(seconds_left)},
         )
+
+
+def tracked_subjects() -> int:
+    with _lock:
+        return len(_request_counts)
 
 
 def reset() -> None:
     with _lock:
-        _windows.clear()
+        _request_counts.clear()

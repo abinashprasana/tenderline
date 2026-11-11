@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session
 
-from tenderline.api.deps import UserId
+from tenderline.api.deps import RateLimitedUserId
 from tenderline.db import public_session
 from tenderline.errors import not_found
 from tenderline.models import Buyer, IngestionRun, Notice, NoticeCpv, NoticeVersion
@@ -150,7 +150,7 @@ def to_out(db: Session, notices: list[Notice]) -> list[NoticeOut]:
 
 @router.get("", response_model=NoticePage, summary="List and filter notices (newest first, cursor pagination)")
 def list_notices(
-    _: UserId,
+    _: RateLimitedUserId,
     f: Annotated[NoticeFilters, Depends(_filters)],
     cursor: str | None = None,
     limit: int = 50,
@@ -161,7 +161,7 @@ def list_notices(
 
 
 @router.get("/{notice_id}", response_model=NoticeOut)
-def get_notice(notice_id: uuid.UUID, _: UserId) -> NoticeOut:
+def get_notice(notice_id: uuid.UUID, _: RateLimitedUserId) -> NoticeOut:
     with public_session() as db:
         n = db.get(Notice, notice_id)
         if n is None:
@@ -170,7 +170,7 @@ def get_notice(notice_id: uuid.UUID, _: UserId) -> NoticeOut:
 
 
 @router.get("/{notice_id}/versions", response_model=list[VersionOut], summary="Version history (corrigenda)")
-def notice_versions(notice_id: uuid.UUID, _: UserId) -> list[NoticeVersion]:
+def notice_versions(notice_id: uuid.UUID, _: RateLimitedUserId) -> list[NoticeVersion]:
     with public_session() as db:
         if db.get(Notice, notice_id) is None:
             raise not_found("Notice")
@@ -199,7 +199,7 @@ runs_router = APIRouter(prefix="/v1/ingestion-runs", tags=["notices"])
 
 
 @runs_router.get("", response_model=list[RunOut], summary="Recent ingestion runs (ops visibility)")
-def list_runs(_: UserId, limit: int = 20) -> list[IngestionRun]:
+def list_runs(_: RateLimitedUserId, limit: int = 20) -> list[IngestionRun]:
     with public_session() as db:
         return list(
             db.scalars(select(IngestionRun).order_by(IngestionRun.started_at.desc()).limit(max(1, min(limit, 100))))

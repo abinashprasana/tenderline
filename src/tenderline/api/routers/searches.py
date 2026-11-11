@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 
-from tenderline.api.deps import CanRead, CanWrite, Ctx, IdemKey, idempotent
+from tenderline.api.deps import CanRead, CanWrite, IdempotencyKeyHeader, TenantContext, run_idempotent
 from tenderline.audit import write_audit
 from tenderline.errors import not_found
 from tenderline.models import Match, Notice, SavedSearch
@@ -112,7 +112,7 @@ def _snap(s: SavedSearch) -> dict[str, Any]:
 
 @router.post("/saved-searches", status_code=201, response_model=SearchOut)
 def create_search(
-    org_id: uuid.UUID, payload: SearchIn, ctx: CanWrite, key: IdemKey, bg: BackgroundTasks
+    org_id: uuid.UUID, payload: SearchIn, ctx: CanWrite, key: IdempotencyKeyHeader, bg: BackgroundTasks
 ) -> JSONResponse:
     def run() -> tuple[int, Any]:
         s = SavedSearch(organisation_id=org_id, **payload.model_dump())
@@ -132,7 +132,7 @@ def create_search(
         bg.add_task(runtime.enqueue_backfill, org_id, s.id)  # after commit: match existing open notices
         return 201, SearchOut.model_validate(s)
 
-    return idempotent(ctx.db, org_id, key, payload, run)
+    return run_idempotent(ctx.db, org_id, key, payload, run)
 
 
 @router.get("/saved-searches", response_model=SearchPage)
@@ -141,7 +141,7 @@ def list_searches(org_id: uuid.UUID, ctx: CanRead, cursor: str | None = None, li
     return SearchPage(items=[SearchOut.model_validate(r) for r in rows], next_cursor=nxt)
 
 
-def _get_search(ctx: Ctx, search_id: uuid.UUID) -> SavedSearch:
+def _get_search(ctx: TenantContext, search_id: uuid.UUID) -> SavedSearch:
     s = ctx.db.get(SavedSearch, search_id)
     if s is None:
         raise not_found("Saved search")
@@ -242,7 +242,7 @@ def list_matches(
     return MatchPage(items=_match_out(ctx, rows), next_cursor=nxt)
 
 
-def _match_out(ctx: Ctx, rows: list[Match]) -> list[MatchOut]:
+def _match_out(ctx: TenantContext, rows: list[Match]) -> list[MatchOut]:
     notices = {n.id: n for n in ctx.db.scalars(select(Notice).where(Notice.id.in_([m.notice_id for m in rows])))}
     return [
         MatchOut(
@@ -274,7 +274,7 @@ def get_match(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanRead) -> MatchOut:
     summary="Ask the agent to (re)qualify a match",
     description="Enqueues qualification on the queue. The agent only writes proposals; a human approves them.",
 )
-def requalify(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanWrite, key: IdemKey) -> JSONResponse:
+def requalify(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanWrite, key: IdempotencyKeyHeader) -> JSONResponse:
     if ctx.db.get(Match, match_id) is None:
         raise not_found("Match")
 
@@ -292,4 +292,4 @@ def requalify(org_id: uuid.UUID, match_id: uuid.UUID, ctx: CanWrite, key: IdemKe
         )
         return 202, {"workflow_id": wid, "match_id": str(match_id), "status": "enqueued"}
 
-    return idempotent(ctx.db, org_id, key, {"match": str(match_id)}, run)
+    return run_idempotent(ctx.db, org_id, key, {"match": str(match_id)}, run)

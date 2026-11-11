@@ -167,3 +167,40 @@ def test_add_member_is_idempotent(client, make_org):
     assert r1.status_code == 201 and r2.status_code == 201 and r2.headers["Idempotent-Replay"] == "true"
     h2 = {"Idempotency-Key": "add-member-0001", **H(a["user_id"])}
     assert client.post(url, json={"login": login, "role": "viewer"}, headers=h2).status_code == 422
+
+
+def test_shared_notice_endpoints_are_rate_limited_per_user(client, make_org, monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "2")
+    get_settings.cache_clear()
+    try:
+        first, second = make_org()["user_id"], make_org()["user_id"]
+        codes = [client.get("/v1/notices?limit=1", headers=H(first)).status_code for _ in range(3)]
+        assert codes == [200, 200, 429]
+        assert client.get("/v1/notices?limit=1", headers=H(second)).status_code == 200
+    finally:
+        monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "100000")
+        get_settings.cache_clear()
+        ratelimit.reset()
+
+
+def test_rate_limiter_forgets_subjects_from_earlier_minutes(monkeypatch):
+    import uuid as uuid_module
+
+    ratelimit.reset()
+    monkeypatch.setattr(ratelimit, "_PRUNE_ABOVE", 50)
+    now = [1_000_000.0]
+    monkeypatch.setattr(ratelimit.time, "time", lambda: now[0])
+    for _ in range(40):
+        ratelimit.check(uuid_module.uuid4())
+    now[0] += 120  # two minutes later
+    for _ in range(20):
+        ratelimit.check(uuid_module.uuid4())
+    assert ratelimit.tracked_subjects() <= 21
+    ratelimit.reset()
+
+
+def test_env_defaults_to_production_so_the_dev_token_is_off_unless_asked_for(monkeypatch):
+    from tenderline.config import Settings
+
+    monkeypatch.delenv("ENV", raising=False)
+    assert Settings(_env_file=None).env == "prod" and not Settings(_env_file=None).is_dev

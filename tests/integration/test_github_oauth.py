@@ -81,7 +81,8 @@ def test_callback_issues_a_jwt_and_upserts_the_user(configured):
     # logging in again with a changed GitHub login updates the same user (matched by GitHub id)
     FakeGithub.profile = {**FakeGithub.profile, "login": "octo-renamed"}
     try:
-        again = configured.get(f"/v1/auth/github/callback?code=def&state={state}").json()
+        fresh_state = configured.get("/v1/auth/github/login").json()["authorize_url"].split("state=")[1].split("&")[0]
+        again = configured.get(f"/v1/auth/github/callback?code=def&state={fresh_state}").json()
     finally:
         FakeGithub.profile = {**FakeGithub.profile, "login": "octo-bidder"}
     assert again["user_id"] == r.json()["user_id"] and again["login"] == "octo-renamed"
@@ -98,3 +99,25 @@ def test_callback_reports_a_rejected_code(configured):
     FakeGithub.token_ok = False
     r = configured.get(f"/v1/auth/github/callback?code=bad&state={state}")
     assert r.status_code == 400 and r.json()["error"]["code"] == "oauth_exchange_failed"
+
+
+def test_callback_from_a_browser_that_did_not_start_the_login_is_refused(configured):
+    state = configured.get("/v1/auth/github/login").json()["authorize_url"].split("state=")[1].split("&")[0]
+    configured.cookies.clear()  # a different browser (the victim's) completes the attacker's login
+    r = configured.get(f"/v1/auth/github/callback?code=abc&state={state}")
+    assert r.status_code == 400 and r.json()["error"]["code"] == "invalid_state"
+
+
+def test_callback_handles_a_github_error_body_instead_of_crashing(configured):
+    state = configured.get("/v1/auth/github/login").json()["authorize_url"].split("state=")[1].split("&")[0]
+    FakeGithub.profile = {"message": "API rate limit exceeded"}
+    try:
+        r = configured.get(f"/v1/auth/github/callback?code=abc&state={state}")
+    finally:
+        FakeGithub.profile = {
+            "id": 424242,
+            "login": "octo-bidder",
+            "email": "octo@example.invalid",
+            "name": "Octo Bidder",
+        }
+    assert r.status_code == 502 and r.json()["error"]["code"] == "github_profile_unavailable"

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from tenderline.api.deps import ROLES, CanRead, IdemKey, IsAdmin, UserId, idempotent
+from tenderline.api.deps import ROLES, CanRead, IdempotencyKeyHeader, IsAdmin, UserId, run_idempotent
 from tenderline.audit import write_audit
 from tenderline.db import tenant_session
 from tenderline.errors import ApiError, conflict, not_found
@@ -75,7 +75,7 @@ def _check_role(role: str) -> None:
 
 
 @router.post("", status_code=201, response_model=OrgOut, summary="Create an organisation (caller becomes owner)")
-def create_org(payload: OrgCreate, user_id: UserId, key: IdemKey) -> JSONResponse:
+def create_org(payload: OrgCreate, user_id: UserId, key: IdempotencyKeyHeader) -> JSONResponse:
     # The organisation id is derived from (user, idempotency key): a retry maps to the same row.
     org_id = uuid.uuid5(_NS, f"{user_id}:{key}")
     slug = f"{re.sub(r'[^a-z0-9]+', '-', payload.name.lower()).strip('-')[:60]}-{org_id.hex[:6]}"
@@ -156,7 +156,7 @@ def list_members(org_id: uuid.UUID, ctx: CanRead) -> list[MemberOut]:
     response_model=MemberOut,
     summary="Add an existing user (one who has logged in) by login (owner)",
 )
-def add_member(org_id: uuid.UUID, payload: MemberIn, ctx: IsAdmin, key: IdemKey) -> JSONResponse:
+def add_member(org_id: uuid.UUID, payload: MemberIn, ctx: IsAdmin, key: IdempotencyKeyHeader) -> JSONResponse:
     _check_role(payload.role)
 
     def run() -> tuple[int, Any]:
@@ -178,7 +178,7 @@ def add_member(org_id: uuid.UUID, payload: MemberIn, ctx: IsAdmin, key: IdemKey)
         )
         return 201, MemberOut(user_id=user.id, login=user.login, name=user.name, role=payload.role)
 
-    return idempotent(ctx.db, org_id, key, payload, run)
+    return run_idempotent(ctx.db, org_id, key, payload, run)
 
 
 @router.patch("/{org_id}/members/{user_id}", response_model=MemberOut, summary="Change a member's role (owner)")

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from tenderline.api.deps import CanRead, CanWrite, Ctx, IdemKey, idempotent
+from tenderline.api.deps import CanRead, CanWrite, IdempotencyKeyHeader, TenantContext, run_idempotent
 from tenderline.audit import write_audit
 from tenderline.errors import ApiError, not_found
 from tenderline.models import AgentProposal, Deadline, Notice, Opportunity
@@ -127,7 +127,7 @@ def list_opportunities(
     return OpportunityPage(items=items, next_cursor=nxt)
 
 
-def _get(ctx: Ctx, opp_id: uuid.UUID) -> Opportunity:
+def _get(ctx: TenantContext, opp_id: uuid.UUID) -> Opportunity:
     o = ctx.db.get(Opportunity, opp_id)
     if o is None:
         raise not_found("Opportunity")
@@ -146,7 +146,7 @@ def get_opportunity(org_id: uuid.UUID, opp_id: uuid.UUID, ctx: CanRead) -> Oppor
     summary="Track a notice manually (idempotent per notice)",
 )
 def create_opportunity(
-    org_id: uuid.UUID, payload: OpportunityIn, ctx: CanWrite, key: IdemKey, bg: BackgroundTasks
+    org_id: uuid.UUID, payload: OpportunityIn, ctx: CanWrite, key: IdempotencyKeyHeader, bg: BackgroundTasks
 ) -> JSONResponse:
     def run() -> tuple[int, Any]:
         opp, created = ensure_opportunity(
@@ -156,7 +156,7 @@ def create_opportunity(
             bg.add_task(runtime.start_opportunity_workflow, org_id, opp.id, opp.workflow_id or f"opp-{opp.id}")
         return (201 if created else 200), _opp_out(ctx.db, opp)
 
-    return idempotent(ctx.db, org_id, key, payload, run)
+    return run_idempotent(ctx.db, org_id, key, payload, run)
 
 
 @router.patch(
@@ -188,7 +188,12 @@ def list_deadlines(org_id: uuid.UUID, opp_id: uuid.UUID, ctx: CanRead) -> list[D
 
 @router.post("/opportunities/{opp_id}/deadlines", status_code=201, response_model=DeadlineOut)
 def add_deadline(
-    org_id: uuid.UUID, opp_id: uuid.UUID, payload: DeadlineIn, ctx: CanWrite, key: IdemKey, bg: BackgroundTasks
+    org_id: uuid.UUID,
+    opp_id: uuid.UUID,
+    payload: DeadlineIn,
+    ctx: CanWrite,
+    key: IdempotencyKeyHeader,
+    bg: BackgroundTasks,
 ) -> JSONResponse:
     opp = _get(ctx, opp_id)
 
@@ -218,7 +223,7 @@ def add_deadline(
         bg.add_task(runtime.notify_opportunity, opp.workflow_id, "deadlines_changed")
         return 201, DeadlineOut.model_validate(d)
 
-    return idempotent(ctx.db, org_id, key, payload, run)
+    return run_idempotent(ctx.db, org_id, key, payload, run)
 
 
 @router.post(
@@ -228,7 +233,12 @@ def add_deadline(
     summary="Add reminders N days before the submission deadline",
 )
 def add_reminders(
-    org_id: uuid.UUID, opp_id: uuid.UUID, payload: RemindersIn, ctx: CanWrite, key: IdemKey, bg: BackgroundTasks
+    org_id: uuid.UUID,
+    opp_id: uuid.UUID,
+    payload: RemindersIn,
+    ctx: CanWrite,
+    key: IdempotencyKeyHeader,
+    bg: BackgroundTasks,
 ) -> JSONResponse:
     opp = _get(ctx, opp_id)
 
@@ -272,7 +282,7 @@ def add_reminders(
         bg.add_task(runtime.notify_opportunity, opp.workflow_id, "deadlines_changed")
         return 201, created
 
-    return idempotent(ctx.db, org_id, key, payload, run)
+    return run_idempotent(ctx.db, org_id, key, payload, run)
 
 
 @router.delete("/deadlines/{deadline_id}", status_code=204)

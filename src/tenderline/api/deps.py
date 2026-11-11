@@ -1,4 +1,4 @@
-"""FastAPI dependency layer: authentication, tenant context, role checks, idempotency."""
+"""What every endpoint depends on: who is calling, which organisation, what they may do, and idempotency."""
 
 from __future__ import annotations
 
@@ -18,96 +18,109 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from tenderline import ratelimit
-from tenderline.db import public_session, tenant_session
+from tenderline.db import tenant_session
 from tenderline.errors import ApiError, forbidden, not_found
 from tenderline.models import IdempotencyKey
 from tenderline.security import decode_token
 
 ROLES = ("viewer", "reviewer", "bid_manager", "owner")
 READ = ROLES
-DECIDE = ("reviewer", "bid_manager", "owner")  # may approve / edit / reject agent proposals
-WRITE = ("bid_manager", "owner")  # may manage searches, opportunities, deadlines
-ADMIN = ("owner",)  # members, organisation settings
+DECIDE = ("reviewer", "bid_manager", "owner")  # may approve, edit or reject agent proposals
+WRITE = ("bid_manager", "owner")  # may manage searches, opportunities and deadlines
+ADMIN = ("owner",)  # may manage members and organisation settings
 
 _bearer = HTTPBearer(auto_error=False)
 
 
-def current_user_id(creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]) -> uuid.UUID:
-    if creds is None:
+def current_user_id(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]) -> uuid.UUID:
+    if credentials is None:
         raise ApiError(401, "unauthorized", "Missing bearer token", headers={"WWW-Authenticate": "Bearer"})
-    return decode_token(creds.credentials)
+    return decode_token(credentials.credentials)
 
 
 UserId = Annotated[uuid.UUID, Depends(current_user_id)]
 
 
+def rate_limited_user_id(user_id: UserId) -> uuid.UUID:
+    """For endpoints on shared data, which have no organisation to count against: limit per user."""
+    ratelimit.check(user_id)
+    return user_id
+
+
+RateLimitedUserId = Annotated[uuid.UUID, Depends(rate_limited_user_id)]
+
+
 @dataclass
-class Ctx:
+class TenantContext:
+    """One request, scoped to one organisation. `db` is a transaction that can only see that organisation."""
+
     user_id: uuid.UUID
     org_id: uuid.UUID
     role: str
     db: Session
 
-    @property
-    def actor(self) -> tuple[str, str]:
-        return "human", str(self.user_id)
 
-
-def org_ctx(org_id: uuid.UUID, user_id: UserId) -> Iterator[Ctx]:
-    """Resolve membership, apply the per-org rate limit, and open the tenant-scoped transaction."""
-    with public_session() as s:
-        role = s.execute(text("SELECT app_membership_role(:u, :o)"), {"u": user_id, "o": org_id}).scalar()
-    if role is None:
-        # 404, not 403: do not reveal whether an organisation id exists.
-        raise not_found("Organisation")
-    ratelimit.check(org_id)
+def tenant_context(org_id: uuid.UUID, user_id: UserId) -> Iterator[TenantContext]:
+    """Open the organisation-scoped transaction, check membership inside it, and apply the rate limit."""
     with tenant_session(org_id) as db:
-        yield Ctx(user_id=user_id, org_id=org_id, role=role, db=db)
+        role = db.execute(text("SELECT app_membership_role(:u, :o)"), {"u": user_id, "o": org_id}).scalar()
+        if role is None:
+            # 404, not 403: a non-member must not learn whether the organisation exists.
+            raise not_found("Organisation")
+        ratelimit.check(org_id)
+        yield TenantContext(user_id=user_id, org_id=org_id, role=role, db=db)
 
 
-def require(*allowed: str) -> Callable[..., Ctx]:
-    def _dep(ctx: Annotated[Ctx, Depends(org_ctx, scope="function")]) -> Ctx:
-        if ctx.role not in allowed:
+def require_role(*allowed: str) -> Callable[..., TenantContext]:
+    def dependency(context: Annotated[TenantContext, Depends(tenant_context, scope="function")]) -> TenantContext:
+        if context.role not in allowed:
             raise forbidden(f"Requires one of roles: {', '.join(allowed)}")
-        return ctx
+        return context
 
-    return _dep
-
-
-CanRead = Annotated[Ctx, Depends(require(*READ), scope="function")]
-CanDecide = Annotated[Ctx, Depends(require(*DECIDE), scope="function")]
-CanWrite = Annotated[Ctx, Depends(require(*WRITE), scope="function")]
-IsAdmin = Annotated[Ctx, Depends(require(*ADMIN), scope="function")]
-
-IdemKey = Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)]
+    return dependency
 
 
-def idempotent(
+CanRead = Annotated[TenantContext, Depends(require_role(*READ), scope="function")]
+CanDecide = Annotated[TenantContext, Depends(require_role(*DECIDE), scope="function")]
+CanWrite = Annotated[TenantContext, Depends(require_role(*WRITE), scope="function")]
+IsAdmin = Annotated[TenantContext, Depends(require_role(*ADMIN), scope="function")]
+
+IdempotencyKeyHeader = Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)]
+
+
+def run_idempotent(
     db: Session,
     org_id: uuid.UUID,
     key: str,
-    payload: Any,
+    request_body: Any,
     handler: Callable[[], tuple[int, Any]],
 ) -> JSONResponse:
-    """Run `handler` at most once per (organisation, key). Replays the stored response afterwards."""
-    digest = hashlib.sha256(json.dumps(jsonable_encoder(payload), sort_keys=True).encode()).hexdigest()
-    ins = (
+    """Run `handler` at most once per organisation and key, and replay its stored response afterwards.
+
+    The key row is inserted in the caller's transaction, so a second request with the same key waits for the
+    first to commit and then replays it. If the handler raises, the transaction rolls back and the key is free
+    to be retried. Reusing a key with a different body is an error.
+    """
+    body_hash = hashlib.sha256(json.dumps(jsonable_encoder(request_body), sort_keys=True).encode()).hexdigest()
+    claim = (
         pg_insert(IdempotencyKey)
-        .values(organisation_id=org_id, key=key, request_hash=digest)
+        .values(organisation_id=org_id, key=key, request_hash=body_hash)
         .on_conflict_do_nothing(index_elements=["organisation_id", "key"])
         .returning(IdempotencyKey.id)
     )
-    row_id = db.execute(ins).scalar()
-    if row_id is None:
-        existing = db.scalars(
+    claimed_id = db.execute(claim).scalar()
+    if claimed_id is None:
+        earlier = db.scalars(
             select(IdempotencyKey).where(IdempotencyKey.organisation_id == org_id, IdempotencyKey.key == key)
         ).one()
-        if existing.request_hash != digest:
+        if earlier.request_hash != body_hash:
             raise ApiError(422, "idempotency_key_reuse", "Idempotency-Key was used with a different request")
-        if existing.response is None:
+        if earlier.response is None:
             raise ApiError(409, "request_in_progress", "A request with this Idempotency-Key is in progress")
-        return JSONResponse(existing.response, existing.status_code or 200, headers={"Idempotent-Replay": "true"})
-    status, data = handler()
-    encoded = jsonable_encoder(data)
-    db.execute(update(IdempotencyKey).where(IdempotencyKey.id == row_id).values(status_code=status, response=encoded))
-    return JSONResponse(encoded, status)
+        return JSONResponse(earlier.response, earlier.status_code or 200, headers={"Idempotent-Replay": "true"})
+    status_code, response_body = handler()
+    encoded = jsonable_encoder(response_body)
+    db.execute(
+        update(IdempotencyKey).where(IdempotencyKey.id == claimed_id).values(status_code=status_code, response=encoded)
+    )
+    return JSONResponse(encoded, status_code)

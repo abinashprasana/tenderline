@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 
 from tenderline.agent.schema import validate_payload
-from tenderline.api.deps import CanDecide, CanRead, Ctx, IdemKey, idempotent
+from tenderline.api.deps import CanDecide, CanRead, IdempotencyKeyHeader, TenantContext, run_idempotent
 from tenderline.audit import write_audit
 from tenderline.errors import ApiError, body, not_found
 from tenderline.models import AgentProposal, Approval, Notice
@@ -123,7 +123,7 @@ def get_proposal(org_id: uuid.UUID, proposal_id: uuid.UUID, ctx: CanRead) -> Pro
 
 
 def _decide(
-    ctx: Ctx,
+    ctx: TenantContext,
     org_id: uuid.UUID,
     proposal_id: uuid.UUID,
     key: str,
@@ -199,7 +199,7 @@ def _decide(
         )
         return 200, _out(ctx.db, p)
 
-    resp = idempotent(ctx.db, org_id, key, payload, run)
+    resp = run_idempotent(ctx.db, org_id, key, payload, run)
     if resp.status_code == 200 and decision != "rejected" and "idempotent-replay" not in resp.headers:
         # Start only after this transaction commits (background tasks run after the response). If the process
         # dies in between, the reconciler workflow restarts the execution: workflow id == proposal id.
@@ -209,7 +209,12 @@ def _decide(
 
 @router.post("/{proposal_id}/approve", response_model=ProposalOut, summary="Approve exactly as proposed")
 def approve(
-    org_id: uuid.UUID, proposal_id: uuid.UUID, payload: ApproveIn, ctx: CanDecide, key: IdemKey, bg: BackgroundTasks
+    org_id: uuid.UUID,
+    proposal_id: uuid.UUID,
+    payload: ApproveIn,
+    ctx: CanDecide,
+    key: IdempotencyKeyHeader,
+    bg: BackgroundTasks,
 ) -> JSONResponse:
     return _decide(
         ctx,
@@ -225,7 +230,12 @@ def approve(
 
 @router.post("/{proposal_id}/edit-approve", response_model=ProposalOut, summary="Edit the payload, then approve")
 def edit_approve(
-    org_id: uuid.UUID, proposal_id: uuid.UUID, payload: EditApproveIn, ctx: CanDecide, key: IdemKey, bg: BackgroundTasks
+    org_id: uuid.UUID,
+    proposal_id: uuid.UUID,
+    payload: EditApproveIn,
+    ctx: CanDecide,
+    key: IdempotencyKeyHeader,
+    bg: BackgroundTasks,
 ) -> JSONResponse:
     return _decide(
         ctx,
@@ -242,7 +252,12 @@ def edit_approve(
 
 @router.post("/{proposal_id}/reject", response_model=ProposalOut, summary="Reject (a reason is required)")
 def reject(
-    org_id: uuid.UUID, proposal_id: uuid.UUID, payload: RejectIn, ctx: CanDecide, key: IdemKey, bg: BackgroundTasks
+    org_id: uuid.UUID,
+    proposal_id: uuid.UUID,
+    payload: RejectIn,
+    ctx: CanDecide,
+    key: IdempotencyKeyHeader,
+    bg: BackgroundTasks,
 ) -> JSONResponse:
     return _decide(
         ctx,
