@@ -192,6 +192,22 @@ def configure_logging(level: str = "INFO") -> None:
     root.setLevel(level.upper())
 
 
+class _LlmSpanFilter:
+    """Forward only LLM spans (`llm.*`) to an exporter, e.g. Langfuse."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def export(self, spans: Any) -> Any:
+        return self._inner.export([s for s in spans if s.name.startswith("llm.")])
+
+    def shutdown(self) -> None:
+        self._inner.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return bool(self._inner.force_flush(timeout_millis))
+
+
 def setup_telemetry(service_name: str | None = None, *, span_exporter: Any = None) -> None:
     """Idempotent. Installs a tracer provider (so trace ids exist) and exports only if configured."""
     global _configured, _tracer, _meter, _inst
@@ -218,6 +234,18 @@ def setup_telemetry(service_name: str | None = None, *, span_exporter: Any = Non
         provider.add_span_processor(
             BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces", headers=headers))
         )
+    if s.langfuse_public_key and s.langfuse_secret_key and span_exporter is None:
+        # Optional: LLM spans also go to Langfuse over OTLP (basic auth with the project keys). Off without keys.
+        import base64
+
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as LfExporter
+
+        token = base64.b64encode(f"{s.langfuse_public_key}:{s.langfuse_secret_key}".encode()).decode()
+        lf = LfExporter(
+            endpoint=f"{s.langfuse_host.rstrip('/')}/api/public/otel/v1/traces",
+            headers={"Authorization": f"Basic {token}"},
+        )
+        provider.add_span_processor(BatchSpanProcessor(_LlmSpanFilter(lf)))  # type: ignore[arg-type]
     trace.set_tracer_provider(provider)
     _tracer = trace.get_tracer("tenderline")
 

@@ -1,0 +1,101 @@
+# Production stack on the OCI VM: `docker compose -f docker-compose.prod.yml --env-file .env up -d`.
+# Postgres is on the same VM (see docs/adr/0002). Only Caddy publishes ports (80/443).
+# Telemetry goes straight to Grafana Cloud via OTEL_EXPORTER_OTLP_* (no local collector in prod).
+name: tenderline
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tenderline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: tenderline
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenderline -d tenderline"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  app:
+    image: ${TENDERLINE_IMAGE:?set TENDERLINE_IMAGE, e.g. ghcr.io/OWNER/tenderline:latest}
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      ENV: prod
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg://tenderline:${POSTGRES_PASSWORD}@db:5432/tenderline
+      APP_DATABASE_URL: postgresql+psycopg://tenderline_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD}@db:5432/tenderline
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      DBOS_SYSTEM_DATABASE_URL: postgresql://tenderline:${POSTGRES_PASSWORD}@db:5432/tenderline_dbos
+      JWT_SECRET: ${JWT_SECRET:?set a unique JWT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URI: https://${DOMAIN:?set DOMAIN}/v1/auth/github/callback
+      LLM_PROVIDER_CHAIN: ${LLM_PROVIDER_CHAIN:-groq,gemini,fake}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      LLM_COST_PER_MTOK_IN: ${LLM_COST_PER_MTOK_IN:-0}
+      LLM_COST_PER_MTOK_OUT: ${LLM_COST_PER_MTOK_OUT:-0}
+      TED_COUNTRY: ${TED_COUNTRY:-IRL}
+      TED_EXTRA_CPV_PREFIXES: ${TED_EXTRA_CPV_PREFIXES:-}
+      INGEST_CRON: ${INGEST_CRON:-0 6 * * *}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      PGHOST: db
+      PGUSER: tenderline
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-2}
+      OCI_S3_ENDPOINT: ${OCI_S3_ENDPOINT:-}
+      OCI_S3_BUCKET: ${OCI_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${OCI_S3_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${OCI_S3_SECRET_KEY:-}
+      AWS_DEFAULT_REGION: ${OCI_REGION:-eu-dublin-1}
+    volumes:
+      - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
+      - backups:/backups
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        if [ -n "$$OCI_S3_BUCKET" ]; then apt-get update -qq && apt-get install -y -qq awscli >/dev/null; fi
+        while true; do
+          now=$$(date -u +%H); target=$$(printf '%02d' "$$BACKUP_HOUR_UTC")
+          if [ "$$now" = "$$target" ]; then /usr/local/bin/backup.sh || echo "backup failed"; sleep 3700; fi
+          sleep 300
+        done
+
+volumes:
+  pgdata: {}
+  caddydata: {}
+  caddyconfig: {}
+  backups: {}

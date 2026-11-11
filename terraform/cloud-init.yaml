@@ -1,0 +1,17 @@
+#cloud-config
+# Installs Docker and prepares /opt/tenderline. The deploy job (GitHub Actions) copies the compose file and
+# .env here and runs `docker compose pull && up -d`.
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - ufw
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+  - usermod -aG docker ubuntu
+  - mkdir -p /opt/tenderline && chown ubuntu:ubuntu /opt/tenderline
+  # The OCI security list is the primary firewall; ufw is defence in depth on the host.
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable

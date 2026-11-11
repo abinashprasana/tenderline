@@ -73,11 +73,7 @@ class RemindersIn(BaseModel):
 
 def _titles(db: Any, opps: list[Opportunity]) -> dict[uuid.UUID, str]:
     ids = {o.notice_id for o in opps}
-    return (
-        {nid: title for nid, title in db.execute(select(Notice.id, Notice.title).where(Notice.id.in_(ids)))}
-        if ids
-        else {}
-    )
+    return dict(db.execute(select(Notice.id, Notice.title).where(Notice.id.in_(ids))).all()) if ids else {}
 
 
 def _opp_out(db: Any, o: Opportunity, with_children: bool = True, title: str | None = None) -> OpportunityOut:
