@@ -62,6 +62,7 @@ ignore = ["S101", "B008", "S608"]
 "src/tenderline/demo.py" = ["E501", "T201"]
 "src/tenderline/cli.py" = ["E501"]
 "src/tenderline/seed.py" = ["E501"]
+"observability/**" = ["E501", "T201"]
 
 [tool.mypy]
 python_version = "3.12"

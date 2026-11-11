@@ -67,18 +67,30 @@ class RejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
-def _out(db: Any, p: AgentProposal) -> ProposalOut:
-    a = db.scalars(select(Approval).where(Approval.proposal_id == p.id)).first()
-    out = ProposalOut.model_validate(p, from_attributes=True)
-    if a is not None:
-        out.approval = ApprovalOut(
-            decision=a.decision,
-            decided_by=a.decided_by,
-            edited_payload=a.edited_payload,
-            reason=a.reason,
-            created_at=a.created_at,
-        )
+def _out_many(db: Any, proposals: list[AgentProposal]) -> list[ProposalOut]:
+    """Serialise proposals with their approvals using one extra query, not one per row."""
+    ids = [p.id for p in proposals]
+    approvals = (
+        {a.proposal_id: a for a in db.scalars(select(Approval).where(Approval.proposal_id.in_(ids)))} if ids else {}
+    )
+    out = []
+    for p in proposals:
+        item = ProposalOut.model_validate(p, from_attributes=True)
+        a = approvals.get(p.id)
+        if a is not None:
+            item.approval = ApprovalOut(
+                decision=a.decision,
+                decided_by=a.decided_by,
+                edited_payload=a.edited_payload,
+                reason=a.reason,
+                created_at=a.created_at,
+            )
+        out.append(item)
     return out
+
+
+def _out(db: Any, p: AgentProposal) -> ProposalOut:
+    return _out_many(db, [p])[0]
 
 
 @router.get("", response_model=ProposalPage, summary="List proposals (newest first)")
@@ -99,7 +111,7 @@ def list_proposals(
     if match_id:
         stmt = stmt.where(AgentProposal.match_id == match_id)
     rows, nxt = paginate(ctx.db, stmt, AgentProposal.created_at, AgentProposal.id, cursor, limit)
-    return ProposalPage(items=[_out(ctx.db, p) for p in rows], next_cursor=nxt)
+    return ProposalPage(items=_out_many(ctx.db, rows), next_cursor=nxt)
 
 
 @router.get("/{proposal_id}", response_model=ProposalOut)

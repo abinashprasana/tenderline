@@ -196,30 +196,53 @@ def match_notice(notice_id: uuid.UUID) -> list[tuple[uuid.UUID, uuid.UUID]]:
     return out
 
 
-def backfill_org(org_id: uuid.UUID, limit: int = 500) -> list[uuid.UUID]:
+def backfill_org(org_id: uuid.UUID, search_id: uuid.UUID | None = None, limit: int = 500) -> list[uuid.UUID]:
     """Match an organisation's active searches against notices that are already stored and still open.
 
     Run when a saved search is created or changed, so a new search shows today's opportunities immediately.
-    Returns ids of matches that need qualification.
+    When `search_id` is given, candidates are pre-filtered in SQL by that search's country, CPV and value
+    criteria; keywords and buyer names are then checked in Python. Returns ids of matches needing qualification.
     """
     from datetime import UTC, datetime
 
+    from sqlalchemy import exists, or_
+
+    conds = [
+        Notice.status == "open",
+        Notice.notice_type.like("cn-%"),
+        or_(Notice.deadline_at.is_(None), Notice.deadline_at > datetime.now(UTC)),
+    ]
+    if search_id is not None:
+        with tenant_session(org_id) as tdb:
+            search = tdb.get(SavedSearch, search_id)
+            view = _search_view(search) if search is not None else None
+        if view is None:
+            return []
+        if view.countries:
+            conds.append(Notice.country.in_([c.upper() for c in view.countries]))
+        if view.cpv_codes:
+            conds.append(
+                exists().where(
+                    NoticeCpv.notice_id == Notice.id,
+                    or_(*[NoticeCpv.cpv_code.like(f"{cpv_prefix(c)}%") for c in view.cpv_codes]),
+                )
+            )
+        if view.min_value is not None:
+            conds.append(or_(Notice.estimated_value.is_(None), Notice.estimated_value >= view.min_value))
+        if view.max_value is not None:
+            conds.append(or_(Notice.estimated_value.is_(None), Notice.estimated_value <= view.max_value))
     with public_session() as db:
         ids = list(
             db.scalars(
                 select(Notice.id)
-                .where(
-                    Notice.status == "open",
-                    Notice.notice_type.like("cn-%"),
-                    (Notice.deadline_at.is_(None)) | (Notice.deadline_at > datetime.now(UTC)),
-                )
+                .where(*conds)
                 .order_by(Notice.publication_date.desc().nulls_last(), Notice.id)
                 .limit(limit)
             )
         )
     out: list[uuid.UUID] = []
     for nid in ids:
-        view = load_notice_view(nid)
-        if view is not None:
-            out.extend(match_notice_for_org(org_id, view))
+        nview = load_notice_view(nid)
+        if nview is not None:
+            out.extend(match_notice_for_org(org_id, nview))
     return out

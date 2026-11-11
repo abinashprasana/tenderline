@@ -479,16 +479,16 @@ def reconcile_approvals(scheduled_time: datetime, context: Any) -> None:
 
 # ===================================================================== saved-search backfill
 @DBOS.step()
-def backfill_step(org_id: str, traceparent: str | None = None) -> list[str]:
+def backfill_step(org_id: str, search_id: str, traceparent: str | None = None) -> list[str]:
     with continue_trace(traceparent, "queue.backfill_matches", **{"tenderline.org_id": org_id}):
-        return [str(m) for m in backfill_org(uuid.UUID(org_id))]
+        return [str(m) for m in backfill_org(uuid.UUID(org_id), uuid.UUID(search_id))]
 
 
 @DBOS.workflow()
 def backfill_workflow(org_id: str, search_id: str, traceparent: str | None = None) -> dict[str, Any]:
     """A new/changed saved search is matched against notices already in the database, then qualified.
     The request's trace context rides along, so API -> enrich queue -> qualify queue -> LLM is one trace."""
-    match_ids = backfill_step(org_id, traceparent)
+    match_ids = backfill_step(org_id, search_id, traceparent)
     for match_id in match_ids:
         DBOS.enqueue_workflow(QUEUE_QUALIFY, qualify_workflow, org_id, match_id, traceparent)
     return {"search_id": search_id, "new_or_refreshed_matches": len(match_ids)}

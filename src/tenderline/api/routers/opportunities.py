@@ -71,8 +71,19 @@ class RemindersIn(BaseModel):
     days_before: list[int] = Field(min_length=1, max_length=6)
 
 
-def _opp_out(db: Any, o: Opportunity, with_children: bool = True) -> OpportunityOut:
-    notice = db.get(Notice, o.notice_id)
+def _titles(db: Any, opps: list[Opportunity]) -> dict[uuid.UUID, str]:
+    ids = {o.notice_id for o in opps}
+    return (
+        {nid: title for nid, title in db.execute(select(Notice.id, Notice.title).where(Notice.id.in_(ids)))}
+        if ids
+        else {}
+    )
+
+
+def _opp_out(db: Any, o: Opportunity, with_children: bool = True, title: str | None = None) -> OpportunityOut:
+    if title is None:
+        notice = db.get(Notice, o.notice_id)
+        title = notice.title if notice else ""
     out = OpportunityOut(
         id=o.id,
         notice_id=o.notice_id,
@@ -115,7 +126,9 @@ def list_opportunities(
     if notice_id:
         stmt = stmt.where(Opportunity.notice_id == notice_id)
     rows, nxt = paginate(ctx.db, stmt, Opportunity.created_at, Opportunity.id, cursor, limit)
-    return OpportunityPage(items=[_opp_out(ctx.db, o, with_children=False) for o in rows], next_cursor=nxt)
+    titles = _titles(ctx.db, rows)
+    items = [_opp_out(ctx.db, o, with_children=False, title=titles.get(o.notice_id, "")) for o in rows]
+    return OpportunityPage(items=items, next_cursor=nxt)
 
 
 def _get(ctx: Ctx, opp_id: uuid.UUID) -> Opportunity:
