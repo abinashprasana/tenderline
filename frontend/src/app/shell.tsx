@@ -152,7 +152,7 @@ function Sidebar({ orgId }: { orgId: string }) {
   return (
     <>
       <div className="flex h-14 items-center px-4">
-        <Link to="/o/$orgId" params={{ orgId }} aria-label="Overview">
+        <Link to="/o/$orgId" params={{ orgId }} aria-label="Tenderline overview">
           <Logo />
         </Link>
       </div>
@@ -205,14 +205,14 @@ function OrgSwitcher() {
       <DropdownMenu.Trigger asChild>
         <button
           className="mx-2 flex items-center gap-3 rounded-xl border border-hairline bg-surface/50 px-3 py-2 text-left transition-colors hover:border-hairline-strong"
-          aria-label={`Organisation: ${current.name}. Switch organisation`}
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-sm font-semibold">
+          <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 text-sm font-semibold">
             {current.name.slice(0, 1).toUpperCase()}
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">{current.name}</span>
             <span className="block text-xs text-faint">{ROLE_LABEL[current.role as Role] ?? current.role}</span>
+            <span className="sr-only">, switch organisation</span>
           </span>
           <ChevronsUpDown className="size-4 text-faint" aria-hidden />
         </button>
@@ -299,9 +299,9 @@ function UserMenu() {
       <DropdownMenu.Trigger asChild>
         <button
           className="grid size-8 place-items-center rounded-full bg-surface-3 text-sm font-semibold transition-shadow hover:ring-2 hover:ring-hairline-strong"
-          aria-label={`Account: ${session.login}`}
         >
-          {session.login.slice(0, 1).toUpperCase()}
+          <span aria-hidden>{session.login.slice(0, 1).toUpperCase()}</span>
+          <span className="sr-only">Account: {session.login}</span>
         </button>
       </DropdownMenu.Trigger>
       <MenuContent align="end">

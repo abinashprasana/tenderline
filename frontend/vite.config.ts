@@ -21,16 +21,6 @@ export default defineConfig({
   build: {
     target: "es2022",
     sourcemap: true,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes("node_modules/react") || id.includes("node_modules/scheduler")) return "react";
-          if (id.includes("@tanstack")) return "tanstack";
-          if (id.includes("node_modules/ogl")) return "shader";
-          return undefined;
-        },
-      },
-    },
   },
   test: {
     environment: "jsdom",

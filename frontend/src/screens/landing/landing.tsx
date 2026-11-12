@@ -195,17 +195,17 @@ function Stage({
   reduce: boolean;
 }) {
   const at = index / (STAGES.length - 1);
+  // The icon lights up as the line reaches it; the text stays at full contrast throughout.
   const lit = useTransform(progress, [Math.max(0, at - 0.08), at], [0, 1]);
-  const opacity = useTransform(lit, [0, 1], [0.45, 1]);
-  const y = useTransform(lit, [0, 1], [8, 0]);
+  const y = useTransform(lit, [0, 1], [6, 0]);
   return (
-    <motion.li className="relative flex gap-4 pl-0 lg:flex-col lg:items-center lg:text-center" style={reduce ? undefined : { opacity, y }}>
+    <motion.li className="relative flex gap-4 pl-0 lg:flex-col lg:items-center lg:text-center" style={reduce ? undefined : { y }}>
       <span className="relative z-10 grid size-12 shrink-0 place-items-center rounded-full border border-hairline-strong bg-surface">
         <motion.span className="absolute inset-0 rounded-full bg-accent" style={{ opacity: reduce ? 1 : lit }} aria-hidden />
         <Icon className="relative size-5 text-text" aria-hidden />
       </span>
       <div>
-        <p className="tabular font-mono text-xs text-faint">0{index + 1}</p>
+        <p className="tabular font-mono text-xs text-muted">0{index + 1}</p>
         <h3 className="mt-1 font-medium">{title}</h3>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">{body}</p>
       </div>
@@ -235,7 +235,7 @@ function Screenshot({ theme }: { theme: "dark" | "light" }) {
         <div ref={ref} style={{ perspective: 1600 }}>
           <motion.figure className="glass overflow-hidden rounded-2xl p-1.5" style={reduce ? undefined : { rotateX, y, transformOrigin: "50% 100%" }}>
             <img
-              src={`/screens/approvals-${theme}.png`}
+              src={`/screens/approvals-${theme}.jpg`}
               alt="The Tenderline approvals screen: a list of notices with fit scores on the left, and on the right one notice's reasons, risks and proposed actions with Approve, Edit and Reject buttons."
               width={1440}
               height={900}

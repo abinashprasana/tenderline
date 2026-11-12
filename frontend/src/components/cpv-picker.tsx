@@ -74,9 +74,10 @@ export function CpvPicker({
           <button
             type="button"
             className="flex h-9 w-full items-center gap-2 rounded-[var(--radius-input)] border border-hairline bg-bg-deep/60 px-3 text-left text-sm text-faint hover:border-hairline-strong"
-            aria-label={`${label}: add`}
           >
-            <Search className="size-4" /> {value.length ? "Add another code" : "Search by number or words"}
+            <Search className="size-4" aria-hidden />
+            <span className="sr-only">{label}: </span>
+            {value.length ? "Add another code" : "Search by number or words"}
           </button>
         </Popover.Trigger>
         <Popover.Portal>

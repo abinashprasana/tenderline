@@ -170,7 +170,7 @@ export function Approvals() {
                       <FitRing score={group.fit} size={36} />
                       <span className="min-w-0 flex-1">
                         <span className="line-clamp-2 text-sm font-medium">{group.title || "Untitled notice"}</span>
-                        <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-faint">
+                        <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
                           <DeadlineChip at={group.deadline} />
                           {group.proposals.length} {group.proposals.length === 1 ? "action" : "actions"}
                         </span>
