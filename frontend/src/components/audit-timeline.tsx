@@ -17,7 +17,7 @@ function traceLink(traceId: string): string | null {
 }
 
 export function actorName(entry: AuditEntry, members: Member[]): string {
-  if (entry.actor_type === "agent") return entry.actor_id.startsWith("qualifier") ? "Qualification agent" : humanise(entry.actor_id);
+  if (entry.actor_type === "agent") return entry.actor_id.startsWith("qualifier") ? "The assistant" : humanise(entry.actor_id);
   const member = members.find((m) => m.user_id === entry.actor_id);
   return member ? (member.name ?? member.login) : "A former member";
 }
@@ -99,18 +99,18 @@ function AuditRow({ entry, members }: { entry: AuditEntry; members: Member[] }) 
 }
 
 const VERBS: Record<string, string> = {
-  "proposal.created": "proposed an action",
-  "proposal.approved": "approved a proposal",
-  "proposal.edited": "edited and approved a proposal",
-  "proposal.rejected": "rejected a proposal",
+  "proposal.created": "suggested an action",
+  "proposal.approved": "approved a suggestion",
+  "proposal.edited": "edited and approved a suggestion",
+  "proposal.rejected": "rejected a suggestion",
   "proposal.executed": "ran an approved action",
   "proposal.failed": "could not run an approved action",
-  "proposal.cancelled": "withdrew a proposal after the notice changed",
+  "proposal.cancelled": "withdrew a suggestion after the notice changed",
   "match.qualified": "assessed a matching notice",
   "match.refreshed": "re-matched a changed notice",
-  "match.qualify_requested": "asked the agent to assess a match",
-  "opportunity.created": "started tracking an opportunity",
-  "opportunity.status_changed": "changed an opportunity's status",
+  "match.qualify_requested": "asked the assistant to assess a notice",
+  "opportunity.created": "started tracking a tender",
+  "opportunity.status_changed": "moved a tender in the pipeline",
   "opportunity.flagged_changed": "flagged that the notice changed",
   "deadline.created": "added a deadline",
   "deadline.deleted": "removed a deadline",
@@ -118,9 +118,9 @@ const VERBS: Record<string, string> = {
   "reminder.fired": "sent a reminder",
   "match.created": "found a matching notice",
   "opportunity.reviewer_assigned": "assigned a reviewer",
-  "saved_search.created": "created a saved search",
-  "saved_search.updated": "updated a saved search",
-  "saved_search.deleted": "deleted a saved search",
+  "saved_search.created": "created a watchlist",
+  "saved_search.updated": "updated a watchlist",
+  "saved_search.deleted": "deleted a watchlist",
   "organisation.created": "created the organisation",
   "organisation.updated": "updated the organisation",
   "membership.added": "added a member",

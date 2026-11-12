@@ -1,19 +1,19 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ScrollText } from "lucide-react";
 
 import { useAudit, useMembers } from "@/api/hooks";
 import { useOrg } from "@/app/org";
 import { AuditTimeline } from "@/components/audit-timeline";
+import { EmptyLog } from "@/components/illustrations";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 
 const ENTITIES = [
-  ["agent_proposal", "Proposals"],
-  ["opportunity", "Opportunities"],
+  ["agent_proposal", "Suggestions"],
+  ["opportunity", "Pipeline"],
   ["deadline", "Deadlines"],
-  ["match", "Matches"],
-  ["saved_search", "Saved searches"],
+  ["match", "Matched notices"],
+  ["saved_search", "Watchlists"],
   ["membership", "Members"],
   ["organisation", "Organisation"],
 ] as const;
@@ -30,7 +30,11 @@ export function AuditLog() {
     <>
       <PageHeader
         title="Audit log"
-        description="Every proposal, decision and change, by a person or the agent. Read-only: entries cannot be edited or deleted."
+        description="Every suggestion, decision and change, by a person or the assistant. Nothing here can be edited or deleted."
+        intro={{
+          id: "audit",
+          text: "If you ever need to show who decided what, and when, it is here. Open Details on an entry to see exactly what changed.",
+        }}
         actions={
           <div className="flex flex-wrap gap-2">
             <Select
@@ -39,9 +43,9 @@ export function AuditLog() {
               value={search.actor ?? ""}
               onChange={(e) => void navigate({ search: (prev) => ({ ...prev, actor: (e.target.value || undefined) as "human" | "agent" | undefined }) })}
             >
-              <option value="">People and agent</option>
+              <option value="">People and the assistant</option>
               <option value="human">People</option>
-              <option value="agent">Agent</option>
+              <option value="agent">The assistant</option>
             </Select>
             <Select
               aria-label="What"
@@ -65,7 +69,7 @@ export function AuditLog() {
         ) : audit.isError ? (
           <ErrorState error={audit.error} onRetry={() => void audit.refetch()} />
         ) : entries.length === 0 ? (
-          <EmptyState icon={<ScrollText className="size-5" />} title="No entries for this filter" />
+          <EmptyState illustration={<EmptyLog />} title="No entries for this filter" />
         ) : (
           <>
             <AuditTimeline entries={entries} members={members.data ?? []} stagger={false} />

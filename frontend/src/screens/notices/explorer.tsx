@@ -1,9 +1,11 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { FileSearch, SlidersHorizontal, X } from "lucide-react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { BellPlus, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { useNotices, type Notice } from "@/api/hooks";
+import { useCan, useOrg } from "@/app/org";
+import { NoResults } from "@/components/illustrations";
 import { CpvPicker } from "@/components/cpv-picker";
 import { DeadlineChip } from "@/components/deadline-chip";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +14,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
 import { date, moneyShort, number } from "@/lib/format";
+import { SCREEN } from "@/lib/labels";
 import type { NoticeSearch } from "@/router";
 
 import { NoticeDrawer } from "./drawer";
@@ -19,6 +22,8 @@ import { NoticeDrawer } from "./drawer";
 const ROW = 64;
 
 export function NoticeExplorer() {
+  const org = useOrg();
+  const canWrite = useCan("write");
   const search = useSearch({ from: "/o/$orgId/notices" });
   const navigate = useNavigate({ from: "/o/$orgId/notices" });
   const { notice: openNotice, ...filters } = search;
@@ -44,12 +49,29 @@ export function NoticeExplorer() {
   return (
     <>
       <PageHeader
-        title="Notices"
-        description="Every notice Tenderline has collected from TED and eTenders. Filters are part of the link, so you can share a view."
+        title={SCREEN.notices}
+        description="Everything collected from TED and eTenders, whether or not it matches a watchlist. The link keeps your filters, so you can share a view."
+        intro={{
+          id: "notices",
+          text: "Use this to explore beyond your watchlists. When a set of filters looks useful, turn it into a watchlist and Tenderline will bring you new notices like these.",
+        }}
         actions={
-          <Button size="sm" className="lg:hidden" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
-            <SlidersHorizontal className="size-3.5" /> Filters{active.length ? ` (${active.length})` : ""}
-          </Button>
+          <>
+            {canWrite && (filters.cpv || filters.q || filters.country || filters.min_value || filters.max_value) ? (
+              <Button asChild size="sm" variant="primary">
+                <Link
+                  to="/o/$orgId/searches"
+                  params={{ orgId: org.id }}
+                  search={{ create: true, cpv: filters.cpv, q: filters.q, country: filters.country, min_value: filters.min_value, max_value: filters.max_value }}
+                >
+                  <BellPlus className="size-3.5" /> Watch for notices like these
+                </Link>
+              </Button>
+            ) : null}
+            <Button size="sm" className="lg:hidden" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
+              <SlidersHorizontal className="size-3.5" /> Filters{active.length ? ` (${active.length})` : ""}
+            </Button>
+          </>
         }
       />
       <div className="grid gap-4 lg:grid-cols-[17rem_1fr]">
@@ -97,8 +119,8 @@ export function NoticeExplorer() {
           ) : query.isError ? (
             <ErrorState error={query.error} onRetry={() => void query.refetch()} />
           ) : rows.length === 0 ? (
-            <EmptyState icon={<FileSearch className="size-5" />} title="No notices match">
-              Loosen a filter, or check Ingestion to see when data last arrived.
+            <EmptyState illustration={<NoResults />} title="No notices match these filters">
+              Loosen a filter, or look at Data sources to see when notices were last collected.
             </EmptyState>
           ) : (
             <div ref={scroller} className="h-[calc(100dvh-15rem)] min-h-96 overflow-y-auto" tabIndex={0} aria-label="Notice list, scrollable">
@@ -174,7 +196,7 @@ function Filters({ value, onChange }: { value: Omit<NoticeSearch, "notice">; onC
         <button type="submit" hidden />
       </form>
       <div className="flex flex-col gap-1.5">
-        <span className="text-[0.8125rem] font-medium text-muted">CPV code (includes everything under it)</span>
+        <span className="text-[0.8125rem] font-medium text-muted">Category (CPV), including everything under it</span>
         <CpvPicker value={value.cpv ? [value.cpv] : []} onChange={(codes) => onChange({ cpv: codes[0] })} multiple={false} label="CPV code" />
       </div>
       <Field label="Status">

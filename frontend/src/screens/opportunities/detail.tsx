@@ -1,5 +1,5 @@
 import { Link, useParams } from "@tanstack/react-router";
-import { AlertTriangle, ArrowLeft, BellPlus, CalendarPlus, Copy, ExternalLink, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, BellPlus, CalendarDays, CalendarPlus, Copy, ExternalLink, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -23,6 +23,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/ui/states";
 import { dateTime, humanise, money, STATUS_LABEL } from "@/lib/format";
+import { downloadCalendar } from "@/lib/ics";
 import { useNow } from "@/lib/use-now";
 
 import { DeadlineStrip, StatusMachine } from "./diagrams";
@@ -56,7 +57,7 @@ export function OpportunityDetail() {
     <div className="flex flex-col gap-4">
       <Button asChild variant="ghost" size="sm" className="-ml-2 w-fit">
         <Link to="/o/$orgId/opportunities" params={{ orgId: org.id }}>
-          <ArrowLeft className="size-4" /> Pipeline
+          <ArrowLeft className="size-4" /> Back to pipeline
         </Link>
       </Button>
 
@@ -68,6 +69,11 @@ export function OpportunityDetail() {
             <p className="mt-1 text-sm text-muted">
               {n ? `${n.buyer_name ?? "Buyer not stated"} · ${money(n.estimated_value, n.currency)}` : " "}
               {reviewer ? ` · Reviewer: ${reviewer.name ?? reviewer.login}` : ""}
+            </p>
+            <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-accent-soft px-3 py-1 text-sm">
+              <ArrowRight className="size-3.5 text-accent" aria-hidden />
+              <span className="sr-only">What to do next: </span>
+              {nextStep(o.status, o.deadlines)}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -130,6 +136,29 @@ export function OpportunityDetail() {
           </h2>
           {canWrite ? (
             <div className="flex gap-2">
+              {o.deadlines.length ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    downloadCalendar(
+                      "tenderline-deadlines.ics",
+                      o.deadlines
+                        .filter((d) => !d.fired_at)
+                        .map((d) => ({
+                          id: d.id,
+                          at: d.due_at,
+                          title: `${d.kind === "submission" ? "Submission deadline" : humanise(d.kind)}: ${o.notice_title}`,
+                          description: d.note ?? undefined,
+                          url: n?.source_url ?? undefined,
+                        })),
+                    );
+                    toast.success("Calendar file downloaded. Open it to add the dates to your calendar.");
+                  }}
+                >
+                  <CalendarDays className="size-3.5" /> Add to calendar
+                </Button>
+              ) : null}
               <Button size="sm" onClick={() => setDialog("reminders")}>
                 <BellPlus className="size-3.5" /> Reminders
               </Button>
@@ -191,6 +220,25 @@ export function OpportunityDetail() {
       />
     </div>
   );
+}
+
+/** One plain sentence on what this tender needs from you now. */
+function nextStep(status: string, deadlines: Deadline[]): string {
+  const hasReminder = deadlines.some((d) => d.kind === "reminder" && !d.fired_at);
+  switch (status) {
+    case "new":
+      return "Decide whether to bid. Move it to Bidding or No bid.";
+    case "bid":
+      return hasReminder ? "Prepare your response. Move it to Submitted once it is sent." : "Add reminders so the deadline does not surprise you.";
+    case "submitted":
+      return "Nothing to do. Tenderline records the result when the award is published.";
+    case "won":
+      return "Awarded to you. Nothing more to do here.";
+    case "lost":
+      return "Awarded to someone else. Nothing more to do here.";
+    default:
+      return "You passed on this one. Move it back to Bidding if that changes.";
+  }
 }
 
 function Banner({ children }: { children: ReactNode }) {

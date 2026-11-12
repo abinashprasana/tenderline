@@ -1,15 +1,19 @@
 import { Link } from "@tanstack/react-router";
-import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 import { useMemo, useState } from "react";
 
 import { useDeadlines, useOpportunities, type Deadline } from "@/api/hooks";
 import { useOrg } from "@/app/org";
 import { DeadlineChip } from "@/components/deadline-chip";
+import { EmptyCalendar } from "@/components/illustrations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
 import { humanise } from "@/lib/format";
+import { downloadCalendar } from "@/lib/ics";
+import { SCREEN } from "@/lib/labels";
 import { useNow } from "@/lib/use-now";
 
 const dayKey = (iso: string) => {
@@ -39,15 +43,43 @@ export function Deadlines() {
 
   return (
     <>
-      <PageHeader title="Deadlines" description="Submission deadlines and reminders across every opportunity, for the next four months." />
+      <PageHeader
+        title={SCREEN.deadlines}
+        description="Submission deadlines and reminders for every tender in your pipeline, for the next four months."
+        intro={{
+          id: "deadlines",
+          text: "Submission deadlines come from the notices themselves and move if the buyer changes them. Reminders are yours: add them from a tender's page, or approve the assistant's suggestion.",
+        }}
+        actions={
+          upcoming.length ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                downloadCalendar(
+                  "tenderline-deadlines.ics",
+                  upcoming.map((d) => ({
+                    id: d.id,
+                    at: d.due_at,
+                    title: `${d.kind === "submission" ? "Submission deadline" : humanise(d.kind)}: ${titles.get(d.opportunity_id) ?? "Tender"}`,
+                    description: d.note ?? undefined,
+                  })),
+                );
+                toast.success("Calendar file downloaded. Open it to add the dates to your calendar.");
+              }}
+            >
+              <CalendarDays className="size-3.5" /> Add all to calendar
+            </Button>
+          ) : null
+        }
+      />
       {deadlines.isPending ? (
         <SkeletonRows />
       ) : deadlines.isError ? (
         <ErrorState error={deadlines.error} onRetry={() => void deadlines.refetch()} />
       ) : upcoming.length === 0 ? (
         <div className="panel">
-          <EmptyState icon={<CalendarClock className="size-5" />} title="Nothing scheduled">
-            Deadlines come from the notices you track. Add reminders from an opportunity's page.
+          <EmptyState illustration={<EmptyCalendar />} title="Nothing scheduled">
+            Deadlines appear when you track a tender in your pipeline. Reminders are added from the tender's page.
           </EmptyState>
         </div>
       ) : (

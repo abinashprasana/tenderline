@@ -1,5 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { Bell, Pencil, Plus, Trash2 } from "lucide-react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -7,6 +7,7 @@ import { describeError, fieldErrors } from "@/api/errors";
 import {
   useCreateSearch,
   useDeleteSearch,
+  useMatches,
   usePatchSearch,
   useReplaceSearch,
   useSearches,
@@ -15,13 +16,17 @@ import {
 } from "@/api/hooks";
 import { useCan, useOrg } from "@/app/org";
 import { CpvChip, CpvPicker } from "@/components/cpv-picker";
+import { Ago } from "@/components/deadline-chip";
+import { Watching } from "@/components/illustrations";
 import { TagInput } from "@/components/tag-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
-import { money, relative } from "@/lib/format";
+import { money } from "@/lib/format";
+import { plural, SCREEN } from "@/lib/labels";
+import type { WatchlistPrefill } from "@/router";
 import { NEED } from "@/lib/permissions";
 
 const EMPTY: SearchInput = { name: "", cpv_codes: [], keywords: [], buyer_names: [], countries: ["IRL"], min_value: null, max_value: null, active: true };
@@ -34,17 +39,29 @@ export function SavedSearches() {
   const org = useOrg();
   const canWrite = useCan("write");
   const searches = useSearches(org.id);
-  const [editing, setEditing] = useState<SavedSearch | "new" | null>(null);
+  const prefill = useSearch({ from: "/o/$orgId/searches" });
+  const navigate = useNavigate({ from: "/o/$orgId/searches" });
+  const matches = useMatches(org.id, {});
+  const [editing, setEditing] = useState<SavedSearch | "new" | null>(prefill.create && canWrite ? "new" : null);
+  const closeBuilder = () => {
+    setEditing(null);
+    if (prefill.create) void navigate({ search: {}, replace: true });
+  };
+  const matchCount = (id: string) => matches.data?.items.filter((m) => m.saved_search_id === id).length;
 
   return (
     <>
       <PageHeader
-        title="Saved searches"
-        description="What to watch for. Every new notice is checked against these; matches go to the agent for an assessment."
+        title={SCREEN.watchlists}
+        description="What Tenderline watches for on your behalf. Every new notice is checked against these; matches go to the assistant, then to you."
+        intro={{
+          id: "watchlists",
+          text: "A watchlist is a set of rules. A notice matches when it meets every rule you filled in. Start broad (one category and your country) and narrow it if too much arrives.",
+        }}
         actions={
           canWrite ? (
             <Button variant="primary" onClick={() => setEditing("new")}>
-              <Plus className="size-4" /> New saved search
+              <Plus className="size-4" /> New watchlist
             </Button>
           ) : null
         }
@@ -56,28 +73,28 @@ export function SavedSearches() {
       ) : searches.data.items.length === 0 ? (
         <div className="panel">
           <EmptyState
-            icon={<Bell className="size-5" />}
-            title="No saved searches yet"
+            illustration={<Watching />}
+            title="Nothing is being watched yet"
             action={canWrite ? <Button variant="primary" onClick={() => setEditing("new")}>Create your first</Button> : undefined}
           >
             {canWrite
-              ? "Start broad: one CPV division (for example 72, IT services) and your country. You can narrow it later."
+              ? "Start broad: one category (for example IT services) and your country. You can narrow it later."
               : NEED.write}
           </EmptyState>
         </div>
       ) : (
         <ul className="grid gap-3 md:grid-cols-2">
           {searches.data.items.map((s) => (
-            <SearchCard key={s.id} search={s} canWrite={canWrite} onEdit={() => setEditing(s)} />
+            <SearchCard key={s.id} search={s} canWrite={canWrite} onEdit={() => setEditing(s)} matched={matchCount(s.id)} />
           ))}
         </ul>
       )}
-      {editing ? <Builder key={editing === "new" ? "new" : editing.id} initial={editing === "new" ? null : editing} onClose={() => setEditing(null)} /> : null}
+      {editing ? <Builder key={editing === "new" ? "new" : editing.id} initial={editing === "new" ? null : editing} prefill={editing === "new" ? prefill : undefined} onClose={closeBuilder} /> : null}
     </>
   );
 }
 
-function SearchCard({ search, canWrite, onEdit }: { search: SavedSearch; canWrite: boolean; onEdit: () => void }) {
+function SearchCard({ search, canWrite, onEdit, matched }: { search: SavedSearch; canWrite: boolean; onEdit: () => void; matched: number | undefined }) {
   const org = useOrg();
   const patch = usePatchSearch(org.id);
   const remove = useDeleteSearch(org.id);
@@ -87,7 +104,9 @@ function SearchCard({ search, canWrite, onEdit }: { search: SavedSearch; canWrit
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate font-medium">{search.name}</h2>
-          <p className="text-xs text-faint">Created {relative(search.created_at)}</p>
+          <p className="text-xs text-muted">
+            {matched === undefined ? "Counting matches…" : matched >= 200 ? "200+ notices matched" : `${plural(matched, "notice")} matched`} · created <Ago at={search.created_at} />
+          </p>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted">
           <span>{search.active ? "Active" : "Paused"}</span>
@@ -133,7 +152,7 @@ function SearchCard({ search, canWrite, onEdit }: { search: SavedSearch; canWrit
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
         <Button asChild size="sm" variant="ghost">
           <Link to="/o/$orgId/matches" params={{ orgId: org.id }} search={{ search: search.id }}>
-            Matches
+            See matched notices
           </Link>
         </Button>
         {canWrite ? (
@@ -150,7 +169,7 @@ function SearchCard({ search, canWrite, onEdit }: { search: SavedSearch; canWrit
       <Dialog
         open={confirm}
         onOpenChange={setConfirm}
-        title={`Delete “${search.name}”?`}
+        title={`Delete the watchlist “${search.name}”?`}
         description="New notices stop being checked against it. Existing matches and proposals stay."
         footer={
           <>
@@ -160,7 +179,7 @@ function SearchCard({ search, canWrite, onEdit }: { search: SavedSearch; canWrit
             <Button
               variant="danger"
               pending={remove.isPending}
-              onClick={() => remove.mutate(search.id, { onSuccess: () => toast("Saved search deleted") })}
+              onClick={() => remove.mutate(search.id, { onSuccess: () => toast("Watchlist deleted") })}
             >
               Delete
             </Button>
@@ -171,7 +190,7 @@ function SearchCard({ search, canWrite, onEdit }: { search: SavedSearch; canWrit
   );
 }
 
-function Builder({ initial, onClose }: { initial: SavedSearch | null; onClose: () => void }) {
+function Builder({ initial, prefill, onClose }: { initial: SavedSearch | null; prefill?: WatchlistPrefill; onClose: () => void }) {
   const org = useOrg();
   const create = useCreateSearch(org.id);
   const replace = useReplaceSearch(org.id);
@@ -187,7 +206,16 @@ function Builder({ initial, onClose }: { initial: SavedSearch | null; onClose: (
           max_value: initial.max_value ?? null,
           active: initial.active,
         }
-      : EMPTY,
+      : prefill?.create
+        ? {
+            ...EMPTY,
+            cpv_codes: prefill.cpv ? [prefill.cpv] : [],
+            keywords: prefill.q ? [prefill.q] : [],
+            countries: prefill.country ? [prefill.country] : EMPTY.countries,
+            min_value: prefill.min_value ?? null,
+            max_value: prefill.max_value ?? null,
+          }
+        : EMPTY,
   );
   const set = <K extends keyof SearchInput>(key: K, value: SearchInput[K]) => setForm((f) => ({ ...f, [key]: value }));
   const error = create.error ?? replace.error;
@@ -201,10 +229,10 @@ function Builder({ initial, onClose }: { initial: SavedSearch | null; onClose: (
     const body: SearchInput = { ...form, name: form.name.trim(), min_value: min, max_value: max };
     if (initial) {
       await replace.mutateAsync({ id: initial.id, body });
-      toast.success("Saved search updated");
+      toast.success("Watchlist updated");
     } else {
       await create.mutateAsync(body);
-      toast.success("Saved. Matching against open notices now; matches appear within a minute.");
+      toast.success("Watchlist saved. Open notices are being checked now; suggestions appear in To decide within a minute.");
     }
     onClose();
   };
@@ -213,7 +241,7 @@ function Builder({ initial, onClose }: { initial: SavedSearch | null; onClose: (
     <Dialog
       open
       onOpenChange={(open) => !open && onClose()}
-      title={initial ? "Edit saved search" : "New saved search"}
+      title={initial ? "Edit watchlist" : "New watchlist"}
       description="A notice matches when it meets every rule you fill in. Leave a rule empty to ignore it."
       className="w-[min(calc(100vw-2rem),38rem)]"
       footer={
@@ -233,7 +261,7 @@ function Builder({ initial, onClose }: { initial: SavedSearch | null; onClose: (
           {(props) => <Input {...props} value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={200} placeholder="e.g. Managed IT, Leinster" autoFocus />}
         </Field>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[0.8125rem] font-medium text-muted">What is being bought (CPV)</span>
+          <span className="text-[0.8125rem] font-medium text-muted">What is being bought: categories (CPV)</span>
           <CpvPicker value={form.cpv_codes ?? []} onChange={(codes) => set("cpv_codes", codes)} />
           {errors.cpv_codes ? <p className="text-xs text-lost">{errors.cpv_codes}</p> : null}
         </div>

@@ -1,10 +1,12 @@
 import { Activity } from "lucide-react";
 import { motion } from "motion/react";
 
-import { useRuns, type Run } from "@/api/hooks";
+import { useMetadata, useRuns, type Run } from "@/api/hooks";
+import { Ago } from "@/components/deadline-chip";
 import { Badge, STATUS_TONE } from "@/components/ui/badge";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 import { date, dateTime, number } from "@/lib/format";
+import { plural, RUN_STATUS, SCREEN } from "@/lib/labels";
 
 function duration(run: Run): string {
   if (!run.finished_at) return "running";
@@ -32,28 +34,52 @@ function Sparkline({ runs }: { runs: Run[] }) {
   );
 }
 
+/** "0 6 * * *" -> "every day at 06:00 UTC". Other schedules are shown as written. */
+function describeCron(cron: string | undefined): string | null {
+  if (!cron) return null;
+  const daily = /^(\d{1,2}) (\d{1,2}) \* \* \*$/.exec(cron.trim());
+  if (daily) return `every day at ${daily[2]!.padStart(2, "0")}:${daily[1]!.padStart(2, "0")} UTC`;
+  return `on the schedule “${cron}” (UTC)`;
+}
+
 export function Ingestion() {
   const runs = useRuns();
+  const metadata = useMetadata();
+  const last = runs.data?.[0];
+  const schedule = describeCron(metadata.data?.ingest_cron);
   return (
     <>
       <PageHeader
-        title="Ingestion"
-        description="Runs that collect notices from TED (the EU's Tenders Electronic Daily) and the eTenders open-data file."
+        title={SCREEN.sources}
+        description="Where notices come from, and when they were last collected."
+        intro={{
+          id: "sources",
+          text: "Tenderline reads TED (Tenders Electronic Daily, the EU's official journal of procurement notices) on a schedule, and can load the Irish eTenders open-data file. Each collection is listed below.",
+        }}
       />
+      {last ? (
+        <p className="panel mb-3 flex flex-wrap items-center gap-2 px-5 py-4 text-sm" role="status">
+          <Badge tone={STATUS_TONE[last.status] ?? "neutral"}>{RUN_STATUS[last.status] ?? last.status}</Badge>
+          <span>
+            Notices were last checked <Ago at={last.finished_at ?? last.started_at} />, with {plural(last.notices_new, "new notice")}.
+            {schedule ? ` The next check runs ${schedule}.` : ""}
+          </span>
+        </p>
+      ) : null}
       {runs.isPending ? (
         <SkeletonRows />
       ) : runs.isError ? (
         <ErrorState error={runs.error} onRetry={() => void runs.refetch()} />
       ) : runs.data.length === 0 ? (
         <div className="panel">
-          <EmptyState icon={<Activity className="size-5" />} title="No runs yet">
-            The first scheduled run starts shortly after the server boots.
+          <EmptyState icon={<Activity className="size-5" />} title="Nothing has been collected yet">
+            The first collection runs on the schedule above. An administrator can also start one with the tenderline ingest command.
           </EmptyState>
         </div>
       ) : (
         <>
           <section className="panel mb-3 p-5">
-            <h2 className="mb-3 text-sm text-muted">New notices per run</h2>
+            <h2 className="mb-3 text-sm text-muted">New notices found by each collection, oldest to newest</h2>
             <Sparkline runs={runs.data} />
           </section>
           <section className="panel overflow-x-auto">
@@ -79,7 +105,7 @@ export function Ingestion() {
                     </td>
                     <td className="px-4 py-2.5 font-sans">{run.source === "ted" ? "TED" : run.source === "etenders" ? "eTenders" : run.source}</td>
                     <td className="px-4 py-2.5 font-sans">
-                      <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{run.status}</Badge>
+                      <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{RUN_STATUS[run.status] ?? run.status}</Badge>
                       {run.error ? <p className="mt-1 max-w-xs text-xs break-words text-lost">{run.error}</p> : null}
                     </td>
                     <td className="px-4 py-2.5 text-right">{number(run.notices_seen)}</td>

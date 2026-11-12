@@ -106,9 +106,12 @@ const overviewRoute = createRoute({
 export const approvalsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/approvals",
-  validateSearch: (search: Record<string, unknown>): { notice?: string; view?: "pending" | "decided" } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { notice?: string; view?: "pending" | "decided"; filter?: "strong" | "soon" | "changed" } => ({
     notice: typeof search.notice === "string" ? search.notice : undefined,
     view: search.view === "decided" ? "decided" : undefined,
+    filter: search.filter === "strong" || search.filter === "soon" || search.filter === "changed" ? search.filter : undefined,
   }),
   component: lazyRouteComponent(() => import("@/screens/approvals/approvals"), "Approvals"),
 });
@@ -178,9 +181,27 @@ const deadlinesRoute = createRoute({
   path: "/deadlines",
   component: lazyRouteComponent(() => import("@/screens/deadlines"), "Deadlines"),
 });
-const searchesRoute = createRoute({
+
+export interface WatchlistPrefill {
+  create?: boolean;
+  cpv?: string;
+  q?: string;
+  country?: string;
+  min_value?: number;
+  max_value?: number;
+}
+
+export const searchesRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/searches",
+  validateSearch: (search: Record<string, unknown>): WatchlistPrefill => ({
+    create: search.create === true || search.create === "true" ? true : undefined,
+    cpv: str(search.cpv),
+    q: str(search.q),
+    country: str(search.country),
+    min_value: num(search.min_value),
+    max_value: num(search.max_value),
+  }),
   component: lazyRouteComponent(() => import("@/screens/searches"), "SavedSearches"),
 });
 

@@ -13,6 +13,7 @@ import { Badge, STATUS_TONE } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ErrorState, SkeletonRows } from "@/components/ui/states";
 import { date, dateTime, humanise, money } from "@/lib/format";
+import { NOTICE_STATUS } from "@/lib/labels";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -72,13 +73,13 @@ function DrawerBody({ id }: { id: string }) {
         ) : n ? (
           <div className="flex flex-col gap-6">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={STATUS_TONE[n.status] ?? "neutral"}>{humanise(n.status)}</Badge>
+              <Badge tone={STATUS_TONE[n.status] ?? "neutral"}>{NOTICE_STATUS[n.status] ?? humanise(n.status)}</Badge>
               <DeadlineChip at={n.deadline_at} />
               <Badge>{n.source === "ted" ? "TED" : n.source === "etenders" ? "eTenders" : n.source}</Badge>
               {tracked ? (
                 <Button asChild size="sm" variant="ghost">
                   <Link to="/o/$orgId/opportunities/$oppId" params={{ orgId: org.id, oppId: tracked.id }}>
-                    Tracked as an opportunity
+                    In your pipeline: open it
                   </Link>
                 </Button>
               ) : canWrite ? (
@@ -86,7 +87,7 @@ function DrawerBody({ id }: { id: string }) {
                   size="sm"
                   variant="primary"
                   pending={track.isPending}
-                  onClick={() => track.mutate({ noticeId: n.id }, { onSuccess: () => toast.success("Now tracking this notice") })}
+                  onClick={() => track.mutate({ noticeId: n.id }, { onSuccess: () => toast.success("Tracking. It is now in your pipeline, with its deadline.") })}
                 >
                   <Plus className="size-3.5" /> Track this notice
                 </Button>
@@ -114,7 +115,7 @@ function DrawerBody({ id }: { id: string }) {
 
             {n.cpv_codes.length ? (
               <section>
-                <h3 className="mb-2 text-sm font-medium text-muted">What is being bought (CPV)</h3>
+                <h3 className="mb-2 text-sm font-medium text-muted">What is being bought: categories (CPV)</h3>
                 <div className="flex flex-col items-start gap-1.5">
                   {n.cpv_codes.map((code) => (
                     <CpvChip key={code} code={code} />

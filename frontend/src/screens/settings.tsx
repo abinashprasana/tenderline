@@ -19,7 +19,9 @@ import { TagInput } from "@/components/tag-input";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
+import { resetTips } from "@/lib/first-run";
 import { NEED, ROLE_LABEL, ROLES, type Role } from "@/lib/permissions";
+import { setReducedTransparency, setTheme, useReducedTransparency, useTheme } from "@/lib/theme";
 
 const TIMEZONES = ["Europe/Dublin", "Europe/London", "Europe/Brussels", "Europe/Paris", "Europe/Berlin", "UTC"];
 
@@ -38,6 +40,7 @@ export function Settings() {
         <div className="grid gap-4 xl:grid-cols-2">
           <ProfileForm key={details.data.id + details.data.name} initialName={details.data.name} initialTimezone={details.data.timezone} profile={details.data.profile as OrgProfile} readOnly={!isAdmin} />
           <MembersPanel readOnly={!isAdmin} />
+          <Preferences />
         </div>
       )}
     </>
@@ -62,14 +65,14 @@ function ProfileForm({ initialName, initialTimezone, profile, readOnly }: { init
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     await patch.mutateAsync({ name: name.trim(), timezone, profile: form });
-    toast.success("Profile saved. The agent uses it from the next assessment.");
+    toast.success("Profile saved. The assistant uses it from its next assessment.");
   };
 
   return (
     <form onSubmit={(e) => void submit(e).catch(() => {})} className="panel flex flex-col gap-4 p-5">
       <div>
         <h2 className="font-medium">Company profile</h2>
-        <p className="text-sm text-muted">The qualification agent reads this to judge fit. Plain, specific words work best.</p>
+        <p className="text-sm text-muted">The assistant reads this to judge whether a tender fits. Plain, specific words work best.</p>
       </div>
       <fieldset disabled={readOnly} className="flex flex-col gap-4">
         <Field label="Company name">{(p) => <Input {...p} value={name} onChange={(e) => setName(e.target.value)} minLength={2} maxLength={200} required />}</Field>
@@ -108,6 +111,57 @@ function ProfileForm({ initialName, initialTimezone, profile, readOnly }: { init
   );
 }
 
+/** Per-browser preferences. Nothing here is stored on the server. */
+function Preferences() {
+  const theme = useTheme();
+  const reduced = useReducedTransparency();
+  return (
+    <section className="panel flex flex-col gap-4 p-5">
+      <div>
+        <h2 className="font-medium">Your preferences</h2>
+        <p className="text-sm text-muted">Saved in this browser only.</p>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm">Theme</span>
+        <div className="flex rounded-full border border-hairline bg-surface-2 p-0.5" role="group" aria-label="Theme">
+          {(["dark", "light"] as const).map((t) => (
+            <button
+              key={t}
+              aria-pressed={theme === t}
+              onClick={() => setTheme(t)}
+              className="h-8 rounded-full px-4 text-sm text-muted capitalize transition-colors aria-pressed:bg-surface-3 aria-pressed:text-text"
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="flex items-center justify-between gap-3 text-sm">
+        <span>
+          Reduce transparency
+          <span className="block text-xs text-muted">Solid panels instead of frosted glass.</span>
+        </span>
+        <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={reduced} onChange={(e) => setReducedTransparency(e.target.checked)} />
+      </label>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm">
+          Tips and introductions
+          <span className="block text-xs text-muted">Show the getting-started list and every page introduction again.</span>
+        </span>
+        <Button
+          size="sm"
+          onClick={() => {
+            resetTips();
+            toast.success("Tips are back. You will see them as you move around.");
+          }}
+        >
+          Show tips again
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 function MembersPanel({ readOnly }: { readOnly: boolean }) {
   const org = useOrg();
   const members = useMembers(org.id);
@@ -132,7 +186,7 @@ function MembersPanel({ readOnly }: { readOnly: boolean }) {
     <section className="panel flex flex-col gap-4 p-5">
       <div>
         <h2 className="font-medium">Members</h2>
-        <p className="text-sm text-muted">Viewers read. Reviewers also decide proposals. Bid managers also manage searches and opportunities. Owners manage everything.</p>
+        <p className="text-sm text-muted">Viewers can look. Reviewers can also decide suggestions. Bid managers can also change watchlists and the pipeline. Owners can do everything, including this page.</p>
       </div>
       {members.isPending ? (
         <SkeletonRows rows={3} />

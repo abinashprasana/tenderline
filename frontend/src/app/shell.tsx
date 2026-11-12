@@ -7,7 +7,6 @@ import {
   Check,
   ChevronsUpDown,
   FileSearch,
-  Gauge,
   Inbox,
   KanbanSquare,
   LogOut,
@@ -17,22 +16,26 @@ import {
   ScrollText,
   Settings,
   Sparkles,
+  Keyboard,
   Sun,
   type LucideIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { DropdownMenu } from "radix-ui";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { useMyOrgs, useRuns, useSummary } from "@/api/hooks";
 import { setSession } from "@/auth/session";
 import { useSession } from "@/auth/use-session";
+import { Ago } from "@/components/deadline-chip";
 import { Logo } from "@/components/logo";
+import { Shortcuts } from "@/components/shortcuts";
 import { Badge, STATUS_TONE } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Kbd, Tooltip } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
-import { relative } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
+import { RUN_STATUS, SCREEN } from "@/lib/labels";
 import { ROLE_LABEL, type Role } from "@/lib/permissions";
 import { setReducedTransparency, setTheme, useReducedTransparency, useTheme } from "@/lib/theme";
 
@@ -44,40 +47,50 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   exact?: boolean;
+  /** Which live count to show beside the label. */
+  count?: "decide" | "deadlines";
 }
 
+// In the order of the work: see what needs you, decide, follow the tenders you chose, then the reference screens.
 export const NAV: { group: string; items: NavItem[] }[] = [
   {
-    group: "Work",
+    group: "Your work",
     items: [
-      { to: "/o/$orgId", label: "Overview", icon: Gauge, exact: true },
-      { to: "/o/$orgId/approvals", label: "Approvals", icon: Inbox },
-      { to: "/o/$orgId/opportunities", label: "Opportunities", icon: KanbanSquare },
-      { to: "/o/$orgId/deadlines", label: "Deadlines", icon: CalendarClock },
+      { to: "/o/$orgId", label: SCREEN.today, icon: Sun, exact: true },
+      { to: "/o/$orgId/approvals", label: SCREEN.decide, icon: Inbox, count: "decide" },
+      { to: "/o/$orgId/opportunities", label: SCREEN.pipeline, icon: KanbanSquare },
+      { to: "/o/$orgId/deadlines", label: SCREEN.deadlines, icon: CalendarClock, count: "deadlines" },
     ],
   },
   {
-    group: "Find",
+    group: "Find tenders",
     items: [
-      { to: "/o/$orgId/notices", label: "Notices", icon: FileSearch },
-      { to: "/o/$orgId/matches", label: "Matches", icon: Sparkles },
-      { to: "/o/$orgId/searches", label: "Saved searches", icon: Bell },
+      { to: "/o/$orgId/matches", label: SCREEN.matched, icon: Sparkles },
+      { to: "/o/$orgId/notices", label: SCREEN.notices, icon: FileSearch },
+      { to: "/o/$orgId/searches", label: SCREEN.watchlists, icon: Bell },
     ],
   },
   {
     group: "Records",
     items: [
-      { to: "/o/$orgId/audit", label: "Audit log", icon: ScrollText },
-      { to: "/o/$orgId/ingestion", label: "Ingestion", icon: Activity },
-      { to: "/o/$orgId/settings", label: "Settings", icon: Settings },
+      { to: "/o/$orgId/audit", label: SCREEN.audit, icon: ScrollText },
+      { to: "/o/$orgId/ingestion", label: SCREEN.sources, icon: Activity },
+      { to: "/o/$orgId/settings", label: SCREEN.settings, icon: Settings },
     ],
   },
 ];
+
+/** The four screens people use every day, for the bar at the bottom of narrow windows. */
+const BOTTOM = NAV[0]!.items;
 
 export function Shell() {
   const org = useOrg();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const navigate = useNavigate();
+  const summary = useSummary(org.id);
+  const toDecide = summary.data?.notices_awaiting_decision ?? 0;
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   const [drawerPath, setDrawerPath] = useState(pathname);
@@ -95,6 +108,22 @@ export function Shell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // The browser tab says how many notices are waiting, so a pinned tab is worth a glance.
+  useEffect(() => {
+    document.title = toDecide > 0 ? `(${toDecide}) Tenderline` : "Tenderline";
+    return () => {
+      document.title = "Tenderline";
+    };
+  }, [toDecide]);
+
+  const go = useCallback(
+    (key: string) => {
+      const to = key === "t" ? "/o/$orgId" : key === "d" ? "/o/$orgId/approvals" : "/o/$orgId/opportunities";
+      void navigate({ to, params: { orgId: org.id } });
+    },
+    [navigate, org.id],
+  );
 
   return (
     <div className="app-backdrop grain min-h-dvh">
@@ -133,22 +162,27 @@ export function Shell() {
       </AnimatePresence>
 
       <div className="lg:pl-[16.5rem]">
-        <TopBar onMenu={() => setDrawerOpen(true)} onPalette={() => setPaletteOpen(true)} />
-        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[90rem] px-4 pt-4 pb-16 focus:outline-none sm:px-6 lg:px-8">
+        <TopBar onMenu={() => setDrawerOpen(true)} onPalette={() => setPaletteOpen(true)} onShortcuts={() => setShortcutsOpen(true)} />
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[90rem] px-4 pt-4 pb-28 focus:outline-none sm:px-6 lg:px-8 lg:pb-16">
           {/* A short fade between pages tells you the content changed without slowing you down. */}
           <motion.div key={pathname} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}>
             <Outlet />
           </motion.div>
         </main>
       </div>
+      <BottomBar orgId={org.id} toDecide={toDecide} onMore={() => setDrawerOpen(true)} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <Shortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} onGo={go} />
     </div>
   );
 }
 
 function Sidebar({ orgId }: { orgId: string }) {
   const summary = useSummary(orgId);
-  const pending = summary.data?.proposals_pending ?? 0;
+  const counts = {
+    decide: summary.data?.notices_awaiting_decision ?? 0,
+    deadlines: summary.data?.deadlines_next_7_days ?? 0,
+  };
   return (
     <>
       <div className="flex h-14 items-center px-4">
@@ -176,10 +210,15 @@ function Sidebar({ orgId }: { orgId: string }) {
                   >
                     <item.icon className="size-4 shrink-0 group-data-[status=active]:text-accent" aria-hidden />
                     <span className="flex-1">{item.label}</span>
-                    {item.label === "Approvals" && pending > 0 ? (
-                      <span className="tabular rounded-full bg-accent px-1.5 text-[0.6875rem] leading-5 font-semibold text-accent-fg">
-                        {pending}
-                        <span className="sr-only"> waiting</span>
+                    {item.count && counts[item.count] > 0 ? (
+                      <span
+                        className={cn(
+                          "tabular rounded-full px-1.5 text-[0.6875rem] leading-5 font-semibold",
+                          item.count === "decide" ? "bg-accent text-accent-fg" : "bg-soon-soft text-soon",
+                        )}
+                      >
+                        {counts[item.count]}
+                        <span className="sr-only">{item.count === "decide" ? " notices waiting for you" : " due this week"}</span>
                       </span>
                     ) : null}
                   </Link>
@@ -232,7 +271,7 @@ function OrgSwitcher() {
   );
 }
 
-function TopBar({ onMenu, onPalette }: { onMenu: () => void; onPalette: () => void }) {
+function TopBar({ onMenu, onPalette, onShortcuts }: { onMenu: () => void; onPalette: () => void; onShortcuts: () => void }) {
   return (
     <div className="sticky top-0 z-20 px-3 pt-3 lg:pr-3 lg:pl-0">
       <div className="glass flex h-12 items-center gap-2 rounded-2xl px-2 sm:px-3">
@@ -253,25 +292,30 @@ function TopBar({ onMenu, onPalette }: { onMenu: () => void; onPalette: () => vo
         <div className="ml-auto flex items-center gap-1">
           <IngestionPill />
           <ThemeToggle />
-          <UserMenu />
+          <UserMenu onShortcuts={onShortcuts} />
         </div>
       </div>
     </div>
   );
 }
 
+/** When notices were last collected. Turns amber if the daily check is more than 36 hours old. */
 function IngestionPill() {
   const org = useOrg();
   const runs = useRuns();
+  const now = useNow();
   const last = runs.data?.[0];
   if (!last) return null;
-  const tone = STATUS_TONE[last.status] ?? "neutral";
   const when = last.finished_at ?? last.started_at;
+  const stale = now - new Date(when).getTime() > 36 * 3600_000;
+  const tone = last.status === "error" ? "lost" : stale ? "soon" : (STATUS_TONE[last.status] ?? "neutral");
   return (
-    <Tooltip label={`Last TED/eTenders ingestion ${last.status}, ${relative(when)}. ${last.notices_new} new notices.`}>
+    <Tooltip
+      label={`${RUN_STATUS[last.status] ?? last.status}: the last check of TED and eTenders found ${last.notices_new} new ${last.notices_new === 1 ? "notice" : "notices"}.${stale ? " That is longer ago than expected." : ""}`}
+    >
       <Link to="/o/$orgId/ingestion" params={{ orgId: org.id }} className="hidden sm:block">
-        <Badge tone={tone} icon={<span className={cn("size-1.5 rounded-full bg-current", last.status === "running" && "animate-pulse")} />}>
-          Updated {relative(when)}
+        <Badge tone={tone} icon={<span className={cn("size-1.5 rounded-full bg-current", last.status === "running" && "animate-pulse motion-reduce:animate-none")} />}>
+          Notices checked <Ago at={when} />
         </Badge>
       </Link>
     </Tooltip>
@@ -288,7 +332,7 @@ function ThemeToggle() {
   );
 }
 
-function UserMenu() {
+function UserMenu({ onShortcuts }: { onShortcuts: () => void }) {
   const session = useSession();
   const reduced = useReducedTransparency();
   const navigate = useNavigate();
@@ -321,6 +365,9 @@ function UserMenu() {
           </span>
           Reduce transparency
         </DropdownMenu.CheckboxItem>
+        <MenuItem onSelect={onShortcuts}>
+          <Keyboard className="size-4" /> Keyboard shortcuts
+        </MenuItem>
         <DropdownMenu.Separator className="my-1 h-px bg-hairline" />
         <MenuItem
           onSelect={() => {
@@ -358,5 +405,36 @@ export function MenuItem({ children, onSelect }: { children: ReactNode; onSelect
     >
       {children}
     </DropdownMenu.Item>
+  );
+}
+
+/** On narrow windows the four daily screens sit under the thumb; everything else is behind "More". */
+function BottomBar({ orgId, toDecide, onMore }: { orgId: string; toDecide: number; onMore: () => void }) {
+  return (
+    <nav aria-label="Main, compact" className="glass fixed inset-x-2 bottom-2 z-30 flex h-14 items-stretch rounded-2xl px-1 lg:hidden">
+      {BOTTOM.map((item) => (
+        <Link
+          key={item.to}
+          to={item.to}
+          params={{ orgId }}
+          activeOptions={{ exact: item.exact ?? false }}
+          className="group relative flex flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[0.6875rem] text-muted data-[status=active]:text-text"
+        >
+          <span className="relative">
+            <item.icon className="size-5 group-data-[status=active]:text-accent" aria-hidden />
+            {item.count === "decide" && toDecide > 0 ? (
+              <span className="tabular absolute -top-1.5 -right-3 rounded-full bg-accent px-1 text-[0.625rem] leading-4 font-semibold text-accent-fg">
+                {toDecide > 99 ? "99+" : toDecide}
+              </span>
+            ) : null}
+          </span>
+          {item.label}
+        </Link>
+      ))}
+      <button onClick={onMore} className="flex flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[0.6875rem] text-muted">
+        <Menu className="size-5" aria-hidden />
+        More
+      </button>
+    </nav>
   );
 }

@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
 import { STATUS_LABEL } from "@/lib/format";
+import { SCREEN } from "@/lib/labels";
+import { EmptyBoard } from "@/components/illustrations";
 
 export const STATUSES = ["new", "bid", "submitted", "won", "no_bid", "lost"] as const;
 
@@ -37,6 +39,15 @@ const COLUMN_HINT: Record<string, string> = {
   won: "Awarded to you",
   no_bid: "Decided not to bid",
   lost: "Awarded to someone else",
+};
+
+const COLUMN_EMPTY: Record<string, string> = {
+  new: "Tenders you start tracking appear here.",
+  bid: "Drag a tender here when you decide to bid.",
+  submitted: "Drag here once your response is sent.",
+  won: "Awarded to you. Filled in from the award notice.",
+  no_bid: "Tenders you decided to pass on.",
+  lost: "Awarded to someone else.",
 };
 
 const COLUMN_DOT: Record<string, string> = {
@@ -94,12 +105,21 @@ export function OpportunityBoard() {
   return (
     <>
       <PageHeader
-        title="Opportunities"
+        title={SCREEN.pipeline}
         description={
           canWrite
-            ? "Drag a card to change its status. Columns it cannot move to fade out while you drag."
-            : "Your role can view the pipeline. Bid managers and owners change statuses."
+            ? "The tenders you are tracking. Drag a card, or use its move button, when something changes."
+            : "The tenders your team is tracking. Bid managers and owners move them."
         }
+        intro={{
+          id: "pipeline",
+          text: "A tender enters the pipeline when you approve “Track in the pipeline” or track a notice yourself. It then moves left to right as you decide, bid and hear back.",
+          points: [
+            { icon: <KanbanSquare className="size-4" />, title: "New → Bidding", body: "Decide whether to bid. Not for you? Move it to No bid." },
+            { icon: <ArrowRightLeft className="size-4" />, title: "Only valid moves", body: "While you drag, columns a card cannot go to fade out." },
+            { icon: <Inbox className="size-4" />, title: "Award notices", body: "When the buyer publishes the award, Won or Lost is recorded for you." },
+          ],
+        }}
       />
       {list.isPending ? (
         <SkeletonRows rows={4} />
@@ -108,17 +128,17 @@ export function OpportunityBoard() {
       ) : items.length === 0 ? (
         <div className="panel">
           <EmptyState
-            icon={<KanbanSquare className="size-5" />}
-            title="No opportunities yet"
+            illustration={<EmptyBoard />}
+            title="Your pipeline is empty"
             action={
               <Button asChild variant="primary">
                 <Link to="/o/$orgId/approvals" params={{ orgId: org.id }}>
-                  Open approvals
+                  Open To decide
                 </Link>
               </Button>
             }
           >
-            Approve a “Track as an opportunity” proposal, or track a notice from the Notices page.
+            Approve a “Track in the pipeline” suggestion in To decide, or open any notice and choose “Track this notice”.
           </EmptyState>
         </div>
       ) : (
@@ -133,6 +153,9 @@ export function OpportunityBoard() {
                     {cards.map((opportunity) => (
                       <Card key={opportunity.id} opportunity={opportunity} canWrite={canWrite} onMove={move} />
                     ))}
+                    {cards.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-hairline-strong px-3 py-6 text-center text-xs text-muted">{COLUMN_EMPTY[status]}</p>
+                    ) : null}
                   </Column>
                 );
               })}
@@ -179,9 +202,9 @@ function Column({
       <header className="flex items-center gap-2 px-2 pt-1 pb-2">
         <span className={cn("size-2 rounded-full", COLUMN_DOT[status])} aria-hidden />
         <h2 className="text-sm font-medium">{STATUS_LABEL[status]}</h2>
-        <span className="tabular ml-auto font-mono text-xs text-faint">{count}</span>
+        <span className="tabular ml-auto font-mono text-xs text-muted">{count}</span>
       </header>
-      <p className="px-2 pb-2 text-xs text-faint">{COLUMN_HINT[status]}</p>
+      <p className="px-2 pb-2 text-xs text-muted">{COLUMN_HINT[status]}</p>
       <div className="flex flex-col gap-2">{children}</div>
     </section>
   );
