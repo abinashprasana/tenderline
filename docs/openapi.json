@@ -3880,6 +3880,10 @@
           "disclaimer": {
             "type": "string",
             "title": "Disclaimer"
+          },
+          "ingest_cron": {
+            "type": "string",
+            "title": "Ingest Cron"
           }
         },
         "type": "object",
@@ -3890,7 +3894,8 @@
           "api_version",
           "contact",
           "data_sources",
-          "disclaimer"
+          "disclaimer",
+          "ingest_cron"
         ],
         "title": "MetadataOut"
       },
@@ -5085,6 +5090,18 @@
             "type": "integer",
             "title": "Notices Awaiting Decision"
           },
+          "matches_awaiting_assessment": {
+            "type": "integer",
+            "title": "Matches Awaiting Assessment"
+          },
+          "decisions_today": {
+            "type": "integer",
+            "title": "Decisions Today"
+          },
+          "decisions_last_7_days": {
+            "type": "integer",
+            "title": "Decisions Last 7 Days"
+          },
           "opportunities_open": {
             "type": "integer",
             "title": "Opportunities Open"
@@ -5135,6 +5152,9 @@
         "required": [
           "proposals_pending",
           "notices_awaiting_decision",
+          "matches_awaiting_assessment",
+          "decisions_today",
+          "decisions_last_7_days",
           "opportunities_open",
           "opportunities_by_status",
           "deadlines_next_7_days",

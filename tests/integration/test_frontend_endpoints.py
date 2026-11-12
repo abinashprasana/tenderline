@@ -18,9 +18,10 @@ from tenderline import cpv
 from tenderline.api.app import create_app
 from tenderline.config import get_settings
 from tenderline.db import owner_session, tenant_session
+from tenderline.matching import match_notice
 from tenderline.opportunities import TRANSITIONS, ensure_opportunity
 from tenderline.security import ISSUER, create_token
-from tests.helpers import add_member, quiesce_workflows, raw_notice, reset_notice_tables, store
+from tests.helpers import add_member, add_search, quiesce_workflows, raw_notice, reset_notice_tables, store
 
 CPV_SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "cpv" / "cpv_2008_sample.xml"
 REPO = Path(__file__).resolve().parents[2]
@@ -129,6 +130,7 @@ def test_summary_counts(client, make_org):
     assert empty["opportunities_by_status"] == dict.fromkeys(("new", "bid", "no_bid", "submitted", "won", "lost"), 0)
     assert [b["notices"] for b in empty["fit_score_histogram"]] == [0] * 10
     assert empty["last_ingestion"] is None
+    assert (empty["matches_awaiting_assessment"], empty["decisions_today"], empty["decisions_last_7_days"]) == (0, 0, 0)
 
     hot = store(raw_notice(title="Cloud hosting")).notice_id
     cool = store(raw_notice(title="Catering")).notice_id
@@ -155,6 +157,22 @@ def test_summary_counts(client, make_org):
     histogram = {b["lower"]: b["notices"] for b in body["fit_score_histogram"]}
     assert histogram[90] == 1 and histogram[10] == 1 and sum(histogram.values()) == 2
     assert body["notices_ingested_24h"] == 2
+
+    # A decision counts for today and for the week; a match not yet assessed is counted too.
+    add_search(org_id)
+    assert match_notice(hot)
+    pending = client.get(f"/v1/organisations/{org_id}/agent-proposals?status=pending", headers=headers(user)).json()
+    target = next(p for p in pending["items"] if p["action_type"] == "mark_no_bid")
+    rejected = client.post(
+        f"/v1/organisations/{org_id}/agent-proposals/{target['id']}/reject",
+        json={"reason": "not for us"},
+        headers=headers(user, "k-sum-reject-1"),
+    )
+    assert rejected.status_code == 200, rejected.text
+    after = client.get(f"/v1/organisations/{org_id}/summary", headers=headers(user)).json()
+    assert after["decisions_today"] == 1 and after["decisions_last_7_days"] == 1
+    assert after["matches_awaiting_assessment"] == 1
+    assert after["proposals_pending"] == 2
 
     # Another organisation sees none of it.
     other = make_org()

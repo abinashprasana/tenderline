@@ -910,6 +910,8 @@ export interface components {
             };
             /** Disclaimer */
             disclaimer: string;
+            /** Ingest Cron */
+            ingest_cron: string;
         };
         /** MyOrgOut */
         MyOrgOut: {
@@ -1310,6 +1312,12 @@ export interface components {
             proposals_pending: number;
             /** Notices Awaiting Decision */
             notices_awaiting_decision: number;
+            /** Matches Awaiting Assessment */
+            matches_awaiting_assessment: number;
+            /** Decisions Today */
+            decisions_today: number;
+            /** Decisions Last 7 Days */
+            decisions_last_7_days: number;
             /** Opportunities Open */
             opportunities_open: number;
             /** Opportunities By Status */

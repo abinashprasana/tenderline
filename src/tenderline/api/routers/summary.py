@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -12,7 +13,7 @@ from sqlalchemy import distinct, func, select, tuple_
 from tenderline.api.deps import CanRead
 from tenderline.api.routers.notices import RunOut
 from tenderline.db import public_session
-from tenderline.models import AgentProposal, Deadline, IngestionRun, Notice, Opportunity
+from tenderline.models import AgentProposal, Approval, Deadline, IngestionRun, Match, Notice, Opportunity, Organisation
 from tenderline.opportunities import CLOSED, STATUSES
 
 router = APIRouter(prefix="/v1/organisations/{org_id}", tags=["summary"])
@@ -29,6 +30,9 @@ class FitBucket(BaseModel):
 class SummaryOut(BaseModel):
     proposals_pending: int
     notices_awaiting_decision: int
+    matches_awaiting_assessment: int
+    decisions_today: int
+    decisions_last_7_days: int
     opportunities_open: int
     opportunities_by_status: dict[str, int]
     deadlines_next_7_days: int
@@ -48,6 +52,18 @@ def organisation_summary(org_id: uuid.UUID, ctx: CanRead) -> SummaryOut:
     notices_awaiting = int(
         db.scalar(select(func.count(distinct(tuple_(pending.c.notice_id, pending.c.notice_version))))) or 0
     )
+
+    matches_awaiting = int(db.scalar(select(func.count()).select_from(Match).where(Match.qualified_at.is_(None))) or 0)
+    # "Today" starts at midnight in the organisation's timezone (UTC when none is set).
+    organisation = db.get(Organisation, org_id)
+    try:
+        zone = ZoneInfo(organisation.timezone) if organisation and organisation.timezone else UTC
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = UTC
+    midnight = now.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def decisions_since(moment: datetime) -> int:
+        return int(db.scalar(select(func.count()).select_from(Approval).where(Approval.created_at >= moment)) or 0)
 
     by_status = dict.fromkeys(STATUSES, 0)
     for status, count in db.execute(select(Opportunity.status, func.count()).group_by(Opportunity.status)):
@@ -92,6 +108,9 @@ def organisation_summary(org_id: uuid.UUID, ctx: CanRead) -> SummaryOut:
     return SummaryOut(
         proposals_pending=proposals_pending,
         notices_awaiting_decision=notices_awaiting,
+        matches_awaiting_assessment=matches_awaiting,
+        decisions_today=decisions_since(midnight),
+        decisions_last_7_days=decisions_since(now - timedelta(days=7)),
         opportunities_open=sum(count for status, count in by_status.items() if status not in CLOSED),
         opportunities_by_status=by_status,
         deadlines_next_7_days=unfired_deadlines_within(7),

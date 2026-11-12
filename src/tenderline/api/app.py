@@ -51,6 +51,7 @@ class MetadataOut(BaseModel):
     contact: str | None
     data_sources: dict[str, Any]
     disclaimer: str
+    ingest_cron: str
 
 
 @asynccontextmanager
@@ -125,6 +126,7 @@ def create_app() -> FastAPI:
             "api_version": "v1",
             "contact": s.contact_email,
             "data_sources": LICENCE,
+            "ingest_cron": s.ingest_cron,
             "disclaimer": "Tenderline provides information and AI-generated proposals only. It does not give legal "
             "or procurement advice; a human decides every action.",
         }
