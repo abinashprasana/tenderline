@@ -2,7 +2,7 @@
 
 A multi-tenant app for small Irish companies that bid for public contracts. It ingests public procurement notices daily, matches them to each company's saved searches, and runs a durable workflow per opportunity that tracks deadlines until award. An AI agent scores each matched notice and **proposes** actions; a human must approve every action before it runs. Everything is audited.
 
-The web app (`frontend/`) is where people work: an approvals inbox, the opportunity pipeline, a notices explorer, deadlines and the audit log. Every feature also works through the API (`/docs` serves Swagger UI; the spec is `/openapi.json`, or `tenderline openapi`). See [ADR 0006](docs/adr/0006-web-app.md).
+The web app (`frontend/`) is where people work: a guided setup, a Today screen that says what to do next, a "To decide" inbox for the assistant's suggestions, the tender pipeline, a notices explorer, watchlists, deadlines and the audit log. Every feature also works through the API (`/docs` serves Swagger UI; the spec is `/openapi.json`, or `tenderline openapi`). See [ADR 0006](docs/adr/0006-web-app.md).
 Tenderline gives information and AI proposals only. It is not legal or procurement advice.
 
 ## Architecture
