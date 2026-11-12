@@ -1,7 +1,8 @@
 import { Clock } from "lucide-react";
 
 import { cn } from "@/lib/cn";
-import { countdown, dateTime, urgency } from "@/lib/format";
+import { countdown, fullDateTime, relative, urgency } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 
 import { Tooltip } from "./ui/states";
 
@@ -13,11 +14,12 @@ const TONE = {
   none: "text-faint bg-surface-2 border-hairline",
 };
 
-/** Time left until a deadline. Red under 3 days, amber under 14. */
+/** Time left until a deadline, counting down live. Red under 3 days, amber under 14. */
 export function DeadlineChip({ at, className }: { at: string | null | undefined; className?: string }) {
-  const level = urgency(at);
+  const now = useNow();
+  const level = urgency(at, now);
   return (
-    <Tooltip label={at ? `Deadline ${dateTime(at)}` : "The notice gives no deadline"}>
+    <Tooltip label={at ? `Closes ${fullDateTime(at)} (your local time)` : "The notice gives no deadline"}>
       <span
         tabIndex={0}
         className={cn(
@@ -28,8 +30,20 @@ export function DeadlineChip({ at, className }: { at: string | null | undefined;
       >
         <Clock className="size-3" aria-hidden />
         <span className="sr-only">Time left: </span>
-        {countdown(at)}
+        {countdown(at, now)}
       </span>
     </Tooltip>
   );
 }
+
+/** "5 minutes ago" that keeps itself current; the exact time is on hover. */
+export function Ago({ at, className }: { at: string | null | undefined; className?: string }) {
+  const now = useNow();
+  if (!at) return <span className={className}>never</span>;
+  return (
+    <time dateTime={at} title={fullDateTime(at)} className={className}>
+      {relative(at, now)}
+    </time>
+  );
+}
+

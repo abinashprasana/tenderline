@@ -10,7 +10,7 @@ import { Badge, STATUS_TONE } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, PageHeader, Skeleton } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
-import { relative } from "@/lib/format";
+import { greeting, relative } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 
 import { DeadlineRiver, FitHistogram, PipelineBars, Ticker } from "./charts";
@@ -31,7 +31,7 @@ export function Overview() {
   return (
     <>
       <PageHeader
-        title={`Good ${greeting()}`}
+        title={greeting(now)}
         description={
           s
             ? s.proposals_pending
@@ -54,7 +54,7 @@ export function Overview() {
         <Kpi index={0} label="Actions to approve" value={s?.proposals_pending} icon={<Inbox className="size-4" />} to="/o/$orgId/approvals" accent />
         <Kpi index={1} label="Open opportunities" value={s?.opportunities_open} icon={<KanbanSquare className="size-4" />} to="/o/$orgId/opportunities" />
         <Kpi index={2} label="Deadlines in 7 days" value={s?.deadlines_next_7_days} icon={<CalendarClock className="size-4" />} to="/o/$orgId/deadlines" warn={Boolean(s?.deadlines_next_7_days)} />
-        <Kpi index={3} label="Notices collected today" value={s?.notices_ingested_24h} icon={<Database className="size-4" />} to="/o/$orgId/notices" hint={s?.last_ingestion ? `last run ${relative(s.last_ingestion.finished_at ?? s.last_ingestion.started_at)}` : undefined} />
+        <Kpi index={3} label="New notices, last 24 hours" value={s?.notices_ingested_24h} icon={<Database className="size-4" />} to="/o/$orgId/notices" hint={s?.last_ingestion ? `last run ${relative(s.last_ingestion.finished_at ?? s.last_ingestion.started_at)}` : undefined} />
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
@@ -117,11 +117,6 @@ export function Overview() {
       ) : null}
     </>
   );
-}
-
-function greeting(): string {
-  const hour = new Date().getHours();
-  return hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
 }
 
 function Kpi({

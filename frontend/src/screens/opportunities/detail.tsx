@@ -257,7 +257,7 @@ function AddDeadlineDialog({ open, onClose, oppId }: { open: boolean; onClose: (
   const [when, setWhen] = useState("");
   const [kind, setKind] = useState<"custom" | "clarification">("custom");
   const [note, setNote] = useState("");
-  const now = useNow(15_000);
+  const now = useNow();
   const future = when && new Date(when).getTime() > now;
   return (
     <Dialog

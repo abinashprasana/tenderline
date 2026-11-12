@@ -88,6 +88,43 @@ export function countdown(value: string | null | undefined, now = Date.now()): s
   return `${hours}h ${minutes % 60}m`;
 }
 
+/**
+ * A greeting for the local time of day. Late night and the small hours get a neutral greeting:
+ * "Good morning" at half past midnight is wrong, and "Good night" is a goodbye.
+ */
+export function greeting(now: number | Date = Date.now()): string {
+  const hour = new Date(now).getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  if (hour >= 17 && hour < 22) return "Good evening";
+  return "Welcome back";
+}
+
+/** Full date and time with the timezone name, for tooltips: "Thu 10 Dec 2026, 12:00 GMT". */
+export function fullDateTime(value: string | null | undefined): string {
+  if (!value) return "No date";
+  return new Intl.DateTimeFormat(LOCALE, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(value));
+}
+
+/** "Today", "Yesterday", or the date: used as day headings. */
+export function dayHeading(value: string, now = Date.now()): string {
+  const day = new Date(value);
+  const start = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = Math.round((start(new Date(now)) - start(day)) / 86_400_000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff === -1) return "Tomorrow";
+  return new Intl.DateTimeFormat(LOCALE, { weekday: "long", day: "numeric", month: "long" }).format(day);
+}
+
 export function number(value: number): string {
   return new Intl.NumberFormat(LOCALE).format(value);
 }
@@ -108,7 +145,7 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 export const ACTION_LABEL: Record<string, string> = {
-  create_opportunity: "Track as an opportunity",
+  create_opportunity: "Track in the pipeline",
   add_deadline_reminders: "Add deadline reminders",
   assign_reviewer: "Assign a reviewer",
   draft_clarification_question: "Draft a clarification question",

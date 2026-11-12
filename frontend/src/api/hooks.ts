@@ -416,6 +416,7 @@ export function useDeleteSearch(org: string) {
 
 /* ------------------------------------------------------------------ audit log */
 export interface AuditQuery {
+  action_prefix?: string;
   entity_type?: string;
   entity_id?: string;
   actor_type?: string;
