@@ -77,18 +77,13 @@ export function SignIn() {
         <h1 id="sign-in-title" className="mt-6 text-xl font-semibold tracking-[-0.01em]">
           Sign in
         </h1>
-        <p className="mt-1 text-sm text-muted">Use your GitHub account. Tenderline only reads your public profile.</p>
-
-        <Button variant="primary" size="lg" className="mt-6 w-full justify-center" pending={pending === "github"} onClick={withGitHub}>
-          {pending === "github" ? null : <GitHubMark />} Continue with GitHub
-        </Button>
+        <p className="mt-1 text-sm text-muted">
+          First time here? You will set up your company and see your first tenders in about a minute.
+        </p>
 
         {isDev ? (
-          <form onSubmit={withDevAccount} className="mt-6 border-t border-hairline pt-5">
-            <p className="mb-3 text-xs text-faint">
-              Development server: you can also sign in with a local account. This option does not exist in production.
-            </p>
-            <Field label="Local account name">
+          <form onSubmit={withDevAccount} className="mt-6">
+            <Field label="Local account name" hint="This is a development server: pick any name, no password. The same name brings you back to the same account.">
               {(props) => (
                 <Input
                   {...props}
@@ -96,17 +91,33 @@ export function SignIn() {
                   onChange={(event) => setDevLogin(event.target.value)}
                   placeholder="e.g. aoife"
                   autoComplete="username"
+                  autoFocus
                   required
                   minLength={1}
                   maxLength={100}
                 />
               )}
             </Field>
-            <Button type="submit" className="mt-3 w-full justify-center" pending={pending === "dev"}>
+            <Button type="submit" variant="primary" size="lg" className="mt-3 w-full justify-center" pending={pending === "dev"}>
               Sign in locally
             </Button>
+            <p className="my-4 flex items-center gap-3 text-xs text-muted">
+              <span className="h-px flex-1 bg-hairline-strong" /> or <span className="h-px flex-1 bg-hairline-strong" />
+            </p>
           </form>
-        ) : null}
+        ) : (
+          <p className="mt-4 text-sm text-muted">Use your GitHub account. Tenderline only reads your public profile.</p>
+        )}
+
+        <Button
+          variant={isDev ? "secondary" : "primary"}
+          size="lg"
+          className={isDev ? "w-full justify-center" : "mt-4 w-full justify-center"}
+          pending={pending === "github"}
+          onClick={withGitHub}
+        >
+          {pending === "github" ? null : <GitHubMark />} Continue with GitHub
+        </Button>
 
         {error ? (
           <p role="alert" className="mt-4 rounded-lg border border-lost/30 bg-lost-soft px-3 py-2 text-sm text-lost">

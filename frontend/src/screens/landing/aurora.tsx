@@ -50,87 +50,106 @@ const DARK = { ink: [0.043, 0.098, 0.13], glass: [0.31, 0.78, 0.71], tide: [0.2,
 const LIGHT = { ink: [0.95, 0.965, 0.96], glass: [0.55, 0.86, 0.8], tide: [0.7, 0.8, 0.95] };
 
 /**
- * The landing page background. Capped at 30 fps and a device pixel ratio of 1.5, paused when the tab is
- * hidden or the canvas is off screen, and drawn once (no animation) when the person prefers reduced motion.
+ * The landing page background. It starts only after the page has painted and the browser is idle, so it
+ * never delays the headline; it renders at half resolution (soft light needs no more) and fades in.
+ * Capped at 30 fps, paused when the tab is hidden or the canvas is off screen, and drawn once (no
+ * animation) when the person prefers reduced motion.
  */
 export function Aurora({ theme }: { theme: "dark" | "light" }) {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const element = host.current;
-    if (!element) return;
-    let renderer: Renderer;
-    try {
-      renderer = new Renderer({ dpr: Math.min(window.devicePixelRatio, 1.5), alpha: false, antialias: false });
-    } catch {
-      return; // no WebGL: the CSS gradient behind stays visible
-    }
-    const gl = renderer.gl;
-    gl.canvas.setAttribute("aria-hidden", "true");
-    gl.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%";
-    element.appendChild(gl.canvas);
-
-    const palette = theme === "dark" ? DARK : LIGHT;
-    const program = new Program(gl, {
-      vertex: VERTEX,
-      fragment: FRAGMENT,
-      uniforms: {
-        uTime: { value: 0 },
-        uResolution: { value: [1, 1] },
-        uInk: { value: palette.ink },
-        uGlass: { value: palette.glass },
-        uTide: { value: palette.tide },
-      },
-    });
-    const mesh = new Mesh(gl, { geometry: new Triangle(gl), program });
-
-    const resize = () => {
-      renderer.setSize(element.clientWidth, element.clientHeight);
-      program.uniforms.uResolution!.value = [element.clientWidth, element.clientHeight];
-    };
-    resize();
-    const resizeObserver = new ResizeObserver(resize);
-    resizeObserver.observe(element);
-
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let visible = true;
-    let frame = 0;
-    let last = 0;
-    const start = performance.now();
-    const draw = (now: number) => {
-      program.uniforms.uTime!.value = (now - start) / 1000 + 40;
-      renderer.render({ scene: mesh });
-    };
-    const loop = (now: number) => {
-      frame = requestAnimationFrame(loop);
-      if (now - last < 1000 / 30) return;
-      last = now;
-      draw(now);
-    };
-    const run = () => {
-      cancelAnimationFrame(frame);
-      if (reduce.matches) draw(start + 12_000);
-      else if (visible && document.visibilityState === "visible") frame = requestAnimationFrame(loop);
-    };
-    const intersection = new IntersectionObserver(([entry]) => {
-      visible = Boolean(entry?.isIntersecting);
-      run();
-    });
-    intersection.observe(element);
-    document.addEventListener("visibilitychange", run);
-    reduce.addEventListener("change", run);
-    run();
-
+    // Creating a WebGL context costs a few hundred milliseconds the first time. Wait until the headline has
+    // painted (the gradient behind is already there), then start when the browser is idle.
+    let stop: (() => void) | undefined;
+    let idle: number | undefined;
+    const begin = () => (stop = startAurora(host.current, theme));
+    const timer = window.setTimeout(() => {
+      if (window.requestIdleCallback) idle = window.requestIdleCallback(begin, { timeout: 1500 });
+      else begin();
+    }, 900);
     return () => {
-      cancelAnimationFrame(frame);
-      intersection.disconnect();
-      resizeObserver.disconnect();
-      document.removeEventListener("visibilitychange", run);
-      reduce.removeEventListener("change", run);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
-      gl.canvas.remove();
+      window.clearTimeout(timer);
+      if (idle !== undefined) window.cancelIdleCallback(idle);
+      stop?.();
     };
   }, [theme]);
 
   return <div ref={host} className="absolute inset-0 overflow-hidden" />;
+}
+
+function startAurora(element: HTMLDivElement | null, theme: "dark" | "light"): (() => void) | undefined {
+  if (!element) return;
+  let renderer: Renderer;
+  try {
+    renderer = new Renderer({ dpr: Math.min(window.devicePixelRatio, 1.5) * 0.5, alpha: false, antialias: false });
+  } catch {
+    return; // no WebGL: the CSS gradient behind stays visible
+  }
+  const gl = renderer.gl;
+  gl.canvas.setAttribute("aria-hidden", "true");
+  gl.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity 900ms ease-out";
+  requestAnimationFrame(() => (gl.canvas.style.opacity = "1"));
+  element.appendChild(gl.canvas);
+
+  const palette = theme === "dark" ? DARK : LIGHT;
+  const program = new Program(gl, {
+    vertex: VERTEX,
+    fragment: FRAGMENT,
+    uniforms: {
+      uTime: { value: 0 },
+      uResolution: { value: [1, 1] },
+      uInk: { value: palette.ink },
+      uGlass: { value: palette.glass },
+      uTide: { value: palette.tide },
+    },
+  });
+  const mesh = new Mesh(gl, { geometry: new Triangle(gl), program });
+
+  const resize = () => {
+    renderer.setSize(element.clientWidth, element.clientHeight);
+    program.uniforms.uResolution!.value = [element.clientWidth, element.clientHeight];
+  };
+  resize();
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(element);
+
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let visible = true;
+  let frame = 0;
+  let last = 0;
+  const start = performance.now();
+  const draw = (now: number) => {
+    program.uniforms.uTime!.value = (now - start) / 1000 + 40;
+    renderer.render({ scene: mesh });
+  };
+  const loop = (now: number) => {
+    frame = requestAnimationFrame(loop);
+    if (now - last < 1000 / 30) return;
+    last = now;
+    draw(now);
+  };
+  const run = () => {
+    cancelAnimationFrame(frame);
+    if (reduce.matches) draw(start + 12_000);
+    else if (visible && document.visibilityState === "visible") frame = requestAnimationFrame(loop);
+  };
+  const intersection = new IntersectionObserver(([entry]) => {
+    visible = Boolean(entry?.isIntersecting);
+    run();
+  });
+  intersection.observe(element);
+  document.addEventListener("visibilitychange", run);
+  reduce.addEventListener("change", run);
+  run();
+
+  return () => {
+    cancelAnimationFrame(frame);
+    intersection.disconnect();
+    resizeObserver.disconnect();
+    document.removeEventListener("visibilitychange", run);
+    reduce.removeEventListener("change", run);
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    gl.canvas.remove();
+  };
 }

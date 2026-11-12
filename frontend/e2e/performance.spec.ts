@@ -5,8 +5,13 @@ import { expect, test } from "@playwright/test";
  * Run against the production build (the web image on :8080), not the Vite dev server:
  * `E2E_BASE_URL=http://localhost:8080 npx playwright test performance`.
  */
-test("landing page stays inside its performance budget", async ({ page, baseURL }) => {
+test("landing page stays inside its performance budget", async ({ browser, page: warmUp, baseURL }) => {
   test.skip(baseURL?.includes(":5173") ?? false, "budgets apply to the production build");
+  // A browser that has only just started takes over a second to paint anything at all, even a bare SVG.
+  // Paint something first, then measure in a fresh context with an empty cache.
+  await warmUp.goto("/favicon.svg");
+  const context = await browser.newContext({ baseURL, viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
   const scripts: { url: string; bytes: number }[] = [];
   page.on("response", async (response) => {
     if (response.request().resourceType() === "script") {
@@ -36,4 +41,5 @@ test("landing page stays inside its performance budget", async ({ page, baseURL 
   expect(metrics.lcp).toBeLessThan(2500);
   expect(metrics.cls).toBeLessThan(0.1);
   expect(initialJs).toBeLessThan(250 * 1024);
+  await context.close();
 });

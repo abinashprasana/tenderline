@@ -60,7 +60,7 @@
   --accent-hover: oklch(0.45 0.1 190);
   --accent-fg: oklch(0.99 0.005 180);
   --accent-soft: oklch(0.5 0.1 190 / 0.1);
-  --won: oklch(0.5 0.13 155);
+  --won: oklch(0.42 0.11 155);
   --won-soft: oklch(0.5 0.13 155 / 0.1);
   --lost: oklch(0.52 0.18 20);
   --lost-soft: oklch(0.52 0.18 20 / 0.09);
@@ -175,20 +175,22 @@
 @media (prefers-reduced-transparency: reduce) {
   .glass {
     background: var(--surface);
-    backdrop-filter: none;
+    /* Prefixed first: the minifier drops the standard property when it comes before the prefixed one. */
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 :root[data-transparency="reduced"] .glass {
   background: var(--surface);
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 @media (prefers-contrast: more) {
   .glass {
     background: var(--surface);
-    backdrop-filter: none;
+    /* Prefixed first: the minifier drops the standard property when it comes before the prefixed one. */
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     border-color: var(--hairline-strong);
   }
   :root {

@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { setTheme, useTheme } from "@/lib/theme";
 
+import { DecisionDemo } from "./demo";
+
 const Aurora = lazy(() => import("./aurora").then((m) => ({ default: m.Aurora })));
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -34,8 +36,9 @@ export function Landing() {
         </div>
       </header>
 
-      <Hero theme={theme} signedIn={Boolean(session)} />
+      <Hero theme={theme} signedIn={Boolean(session)} devServer={metadata.data?.env === "dev"} />
       <HowItWorks />
+      <DecisionDemo />
       <Screenshot theme={theme} />
       <Sources metadata={metadata.data} />
 
@@ -50,7 +53,7 @@ export function Landing() {
   );
 }
 
-function Hero({ theme, signedIn }: { theme: "dark" | "light"; signedIn: boolean }) {
+function Hero({ theme, signedIn, devServer }: { theme: "dark" | "light"; signedIn: boolean; devServer: boolean }) {
   return (
     <section className="relative isolate flex min-h-[min(100dvh,56rem)] items-center overflow-hidden">
       <div className="app-backdrop absolute inset-0 -z-10" aria-hidden>
@@ -98,12 +101,12 @@ function Hero({ theme, signedIn }: { theme: "dark" | "light"; signedIn: boolean 
           <ul className="flex flex-col gap-3 text-sm">
             <Point icon={<FileText className="size-4" />}>New EU and Irish notices collected every day</Point>
             <Point icon={<Sparkles className="size-4" />}>A fit score, reasons and risks for each match</Point>
-            <Point icon={<UserCheck className="size-4" />}>One click to approve, edit or reject</Point>
+            <Point icon={<UserCheck className="size-4" />}>You approve, edit or reject each suggestion</Point>
             <Point icon={<BellRing className="size-4" />}>Reminders before every submission deadline</Point>
           </ul>
           <Button asChild variant="primary" size="lg" className="mt-6 w-full justify-center">
             <Link to={signedIn ? "/app" : "/sign-in"}>
-              {signedIn ? "Open your workspace" : "Sign in with GitHub"} <ArrowRight className="size-4" />
+              {signedIn ? "Open your workspace" : devServer ? "Try it now, no account needed" : "Sign in with GitHub"} <ArrowRight className="size-4" />
             </Link>
           </Button>
         </motion.aside>

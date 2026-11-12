@@ -9,27 +9,49 @@ export interface Account {
   orgId: string;
 }
 
-/** Signs in through the UI with a fresh local account and creates its organisation through the welcome screen. */
+/**
+ * Goes through the real first-run flow: sign in with a fresh local account, describe the company, pick what
+ * to watch for, and wait on the "finding your tenders" step until the first suggestions are ready.
+ */
 export async function signUp(page: Page, company = "Liffey Digital Ltd", loginPrefix = "e2e"): Promise<Account> {
   const login = `${loginPrefix}-${Date.now().toString(36)}`;
   await page.goto("/sign-in");
   await page.getByLabel("Local account name").fill(login);
   await page.getByRole("button", { name: "Sign in locally" }).click();
   await expect(page).toHaveURL(/\/welcome$/);
+
   await page.getByLabel("Company name").fill(company);
   await page.getByLabel("What you do").fill("Managed IT and cloud hosting for Irish public bodies, with a security operations team.");
-  await page.getByLabel("Capabilities").fill("cloud hosting, cyber security, managed IT services, software development");
-  await page.getByRole("button", { name: "Create and add a saved search" }).click();
-  await expect(page).toHaveURL(/\/o\/[0-9a-f-]+\/searches$/);
+  await page.getByLabel("What you are good at (optional)").fill("cloud hosting, cyber security, managed IT services, software development");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByRole("heading", { name: "What should Tenderline watch for?" })).toBeVisible();
+  await page.getByRole("button", { name: "IT services", exact: true }).click();
+  await page.getByRole("button", { name: "Find my tenders" }).click();
+
+  // The last step narrates the real pipeline and unlocks when the assistant has finished the first notice.
+  await expect(page.getByRole("heading", { name: "Your first tenders are ready" })).toBeVisible({ timeout: 90_000 });
+  const session = await page.evaluate(() => sessionStorage.getItem("tenderline.session") ?? "{}");
+  await page.getByRole("button", { name: "Decide your first one" }).click();
+  await expect(page).toHaveURL(/\/o\/[0-9a-f-]+\/approvals/);
   const orgId = page.url().match(/\/o\/([0-9a-f-]+)\//)![1]!;
-  const raw = await page.evaluate(() => sessionStorage.getItem("tenderline.session") ?? "{}");
-  const session = JSON.parse(raw);
-  return { session: raw, token: session.token, userId: session.userId, login, orgId };
+  const parsed = JSON.parse(session);
+  return { session, token: parsed.token, userId: parsed.userId, login, orgId };
 }
 
 /** Each test gets a fresh browser context; this puts the signed-in session back before any page script runs. */
 export async function restore(page: Page, account: Account) {
   await page.addInitScript((raw) => sessionStorage.setItem("tenderline.session", raw), account.session);
+}
+
+/** Hides page introductions and the getting-started list, for tests that are not about them. */
+export async function quietTips(page: Page, orgId: string) {
+  await page.addInitScript((org) => {
+    for (const id of ["today", "decide", "pipeline", "notices", "watchlists", "matched", "deadlines", "audit", "sources"]) {
+      localStorage.setItem(`tenderline.tip.intro.${id}`, "1");
+    }
+    localStorage.setItem(`tenderline.tip.checklist.${org}`, "1");
+  }, orgId);
 }
 
 export function api(request: APIRequestContext, account: Account) {
