@@ -1,5 +1,6 @@
 # Production stack on the OCI VM: `docker compose -f docker-compose.prod.yml --env-file .env up -d`.
-# Postgres is on the same VM (see docs/adr/0002). Only Caddy publishes ports (80/443).
+# Postgres is on the same VM (see docs/adr/0002). Only Caddy publishes ports (80/443); it serves the web app
+# and proxies the API (docs/adr/0006).
 # Telemetry goes straight to Grafana Cloud via OTEL_EXPORTER_OTLP_* (no local collector in prod).
 name: tenderline
 services:
@@ -54,13 +55,15 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
 
+  # Caddy with the built web app inside; serves it and proxies the API on the same origin, with TLS.
   caddy:
-    image: caddy:2
+    image: ${TENDERLINE_WEB_IMAGE:?set TENDERLINE_WEB_IMAGE, e.g. ghcr.io/OWNER/tenderline-web:latest}
     restart: unless-stopped
     depends_on: [app]
     ports: ["80:80", "443:443"]
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN}
+      API_UPSTREAM: app:8000
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data

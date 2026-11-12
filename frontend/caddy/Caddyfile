@@ -1,0 +1,10 @@
+# Local and CI: plain HTTP on 8080. Production mounts deploy/Caddyfile instead, which adds TLS and HSTS.
+{
+	admin off
+}
+
+import /etc/caddy/tenderline.caddy
+
+:8080 {
+	import tenderline
+}

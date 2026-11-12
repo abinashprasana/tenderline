@@ -1,12 +1,15 @@
-# Caddy obtains and renews TLS certificates automatically for {$DOMAIN} (DNS must point at the VM).
+# Production. Caddy obtains and renews TLS certificates for {$DOMAIN} (DNS must point at the VM).
+# The web image provides /etc/caddy/tenderline.caddy: the web app, plus /v1, /healthz, /readyz and /docs
+# proxied to the API on the same origin.
+{
+	admin off
+}
+
+import /etc/caddy/tenderline.caddy
+
 {$DOMAIN} {
-	encode zstd gzip
-	reverse_proxy app:8000
-	header {
-		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		-Server
-	}
+	import tenderline
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	log {
 		output stdout
 		format json

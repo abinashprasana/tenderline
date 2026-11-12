@@ -1,4 +1,5 @@
-# Development stack: `docker compose up --build`. Needs no cloud account and no API keys (fake LLM provider).
+# Development stack: `docker compose up --build`, then open http://localhost:8080. Needs no cloud account and no
+# API keys (fake LLM provider).
 name: tenderline
 x-app-env: &app-env
   ENV: ${ENV:-dev}
@@ -59,6 +60,14 @@ services:
     ports: ["${APP_PORT:-8000}:8000"]
     depends_on:
       db: {condition: service_healthy}
+    restart: unless-stopped
+
+  # The web app at http://localhost:8080, proxying /v1 to the API on the same origin.
+  web:
+    build: ./frontend
+    image: tenderline-web:dev
+    ports: ["${WEB_PORT:-8080}:8080"]
+    depends_on: [app]
     restart: unless-stopped
 
   otel-collector:
