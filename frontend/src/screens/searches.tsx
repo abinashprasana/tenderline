@@ -1,10 +1,13 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useQueries } from "@tanstack/react-query";
+import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 
+import { api, unwrap } from "@/api/client";
 import { describeError, fieldErrors } from "@/api/errors";
 import {
+  cleanParams,
   useCreateSearch,
   useDeleteSearch,
   useMatches,
@@ -42,7 +45,14 @@ export function SavedSearches() {
   const prefill = useSearch({ from: "/o/$orgId/searches" });
   const navigate = useNavigate({ from: "/o/$orgId/searches" });
   const matches = useMatches(org.id, {});
-  const [editing, setEditing] = useState<SavedSearch | "new" | null>(prefill.create && canWrite ? "new" : null);
+  const [editing, setEditing] = useState<SavedSearch | "new" | null>(null);
+  // "?create" opens the builder: from the palette, the Notices screen, or a shared link, also when this
+  // page is already open. Adjusting state during render keeps this out of an effect.
+  const [handledCreate, setHandledCreate] = useState(false);
+  if (Boolean(prefill.create) !== handledCreate) {
+    setHandledCreate(Boolean(prefill.create));
+    if (prefill.create && canWrite) setEditing("new");
+  }
   const closeBuilder = () => {
     setEditing(null);
     if (prefill.create) void navigate({ search: {}, replace: true });
@@ -290,8 +300,48 @@ function Builder({ initial, prefill, onClose }: { initial: SavedSearch | null; p
             {(props) => <Input {...props} type="number" min={0} inputMode="numeric" value={form.max_value ?? ""} onChange={(e) => set("max_value", e.target.value === "" ? null : e.target.value)} />}
           </Field>
         </div>
-        {!hasCriterion(form) ? <p className="text-xs text-soon">Add at least one rule.</p> : null}
+        {!hasCriterion(form) ? <p className="text-xs text-soon">Add at least one rule.</p> : <MatchEstimate form={form} />}
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * "About N open notices match": asks the notices list with the same categories, country and value range.
+ * Several categories are counted one by one and added up, so overlapping codes can count a notice twice;
+ * keywords and buyers narrow the real result further, which the text says.
+ */
+function MatchEstimate({ form }: { form: SearchInput }) {
+  const codes = useDeferredValue((form.cpv_codes ?? []).slice(0, 5));
+  const country = (form.countries ?? []).length === 1 ? form.countries![0] : undefined;
+  const min = form.min_value === null || form.min_value === undefined || form.min_value === "" ? undefined : Number(form.min_value);
+  const max = form.max_value === null || form.max_value === undefined || form.max_value === "" ? undefined : Number(form.max_value);
+  const [today] = useState(() => new Date().toISOString());
+  const queries = useQueries({
+    queries: (codes.length ? codes : [undefined]).map((cpv) => ({
+      queryKey: ["estimate", cpv, country, min, max],
+      staleTime: 60_000,
+      queryFn: () =>
+        unwrap(
+          api.GET("/v1/notices", {
+            params: {
+              query: cleanParams({ cpv, country, min_value: min, max_value: max, status: "open", deadline_after: today, limit: 200 }),
+            },
+          }),
+        ),
+    })),
+  });
+  if (queries.some((q) => q.isPending)) return <p className="text-xs text-muted">Counting open notices…</p>;
+  if (queries.some((q) => q.isError)) return null;
+  const total = queries.reduce((sum, q) => sum + (q.data?.items.length ?? 0), 0);
+  const capped = queries.some((q) => q.data?.next_cursor);
+  const narrower = (form.keywords ?? []).length > 0 || (form.buyer_names ?? []).length > 0 || (form.countries ?? []).length > 1;
+  return (
+    <p className="rounded-lg border border-hairline bg-surface-2 px-3 py-2 text-sm" role="status">
+      About <span className="tabular font-mono font-semibold">{capped ? `${total}+` : total}</span> open{" "}
+      {total === 1 ? "notice matches" : "notices match"} these categories{country ? ` in ${country}` : ""} right now
+      {narrower ? ", before keywords and buyers narrow it down" : ""}.
+      {total === 0 ? " Try a broader category." : ""}
+    </p>
   );
 }

@@ -28,7 +28,7 @@ const GROUPS: { title: string; rows: { keys: string[]; does: string }[] }[] = [
 
 /** True when a key press belongs to a text field, a dialog or a modifier chord, so shortcuts stay out of the way. */
 export function isTyping(event: KeyboardEvent): boolean {
-  const target = event.target as HTMLElement | null;
+  const target = event.target instanceof Element ? event.target : null;
   return (
     event.metaKey ||
     event.ctrlKey ||

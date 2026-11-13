@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { FileText, Inbox, Moon, Search } from "lucide-react";
+import { FileText, History, Inbox, Keyboard, Moon, Plus, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Dialog } from "radix-ui";
 import { useDeferredValue, useState } from "react";
@@ -9,6 +9,7 @@ import { useDeferredValue, useState } from "react";
 import { api, unwrap } from "@/api/client";
 import { useProposals } from "@/api/hooks";
 import { countdown } from "@/lib/format";
+import { recentNotices } from "@/lib/first-run";
 import { setTheme, useTheme } from "@/lib/theme";
 
 import { useOrg } from "./org";
@@ -32,6 +33,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     staleTime: 30_000,
   });
   const pending = useProposals(org.id, { status: "pending" });
+  const recent = open ? recentNotices() : [];
   const awaiting = new Map<string, { title: string; count: number }>();
   for (const proposal of pending.data?.items ?? []) {
     const entry = awaiting.get(proposal.notice_id) ?? { title: proposal.notice_title, count: 0 };
@@ -108,6 +110,24 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                       </Command.Group>
                     ) : null}
 
+                    {term.length < 3 && recent.length > 0 ? (
+                      <Command.Group heading="Recently opened" className="palette-group">
+                        {recent.map((item) => (
+                          <Command.Item
+                            key={item.id}
+                            value={`recent ${item.id} ${item.title}`}
+                            className={ITEM}
+                            onSelect={() =>
+                              go(() => void navigate({ to: "/o/$orgId/notices", params: { orgId: org.id }, search: { notice: item.id } }))
+                            }
+                          >
+                            <History className="size-4 shrink-0" aria-hidden />
+                            <span className="flex-1 truncate text-text">{item.title}</span>
+                          </Command.Item>
+                        ))}
+                      </Command.Group>
+                    ) : null}
+
                     {awaiting.size > 0 ? (
                       <Command.Group heading="Waiting for a decision" className="palette-group">
                         {[...awaiting.entries()].slice(0, 6).map(([noticeId, entry]) => (
@@ -147,6 +167,37 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                           <span className="text-text">{item.label}</span>
                         </Command.Item>
                       ))}
+                    </Command.Group>
+
+                    <Command.Group heading="Do" className="palette-group">
+                      <Command.Item
+                        value="new watchlist create watch"
+                        className={ITEM}
+                        onSelect={() => go(() => void navigate({ to: "/o/$orgId/searches", params: { orgId: org.id }, search: { create: true } }))}
+                      >
+                        <Plus className="size-4 shrink-0" aria-hidden />
+                        <span className="text-text">New watchlist</span>
+                      </Command.Item>
+                      <Command.Item
+                        value="decide strong fits approve"
+                        className={ITEM}
+                        onSelect={() => go(() => void navigate({ to: "/o/$orgId/approvals", params: { orgId: org.id }, search: { filter: "strong" } }))}
+                      >
+                        <Inbox className="size-4 shrink-0" aria-hidden />
+                        <span className="text-text">Decide the strong fits</span>
+                      </Command.Item>
+                      <Command.Item
+                        value="closing soon deadline notices"
+                        className={ITEM}
+                        onSelect={() => go(() => void navigate({ to: "/o/$orgId/notices", params: { orgId: org.id }, search: { sort: "deadline" } }))}
+                      >
+                        <FileText className="size-4 shrink-0" aria-hidden />
+                        <span className="text-text">Notices closing soonest</span>
+                      </Command.Item>
+                      <Command.Item value="keyboard shortcuts help" className={ITEM} onSelect={() => go(() => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true })))}>
+                        <Keyboard className="size-4 shrink-0" aria-hidden />
+                        <span className="text-text">Keyboard shortcuts</span>
+                      </Command.Item>
                     </Command.Group>
 
                     <Command.Group heading="Preferences" className="palette-group">

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 import { humanise } from "@/lib/format";
-import { SCREEN } from "@/lib/labels";
+import { plural, SCREEN } from "@/lib/labels";
 
 const RULE_LABEL: Record<string, string> = {
   cpv: "Category",
@@ -91,17 +91,47 @@ export function Matches() {
           </EmptyState>
         </div>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {matches.data.items.map((match) => (
-            <MatchRow key={match.id} match={match} searchName={names.get(match.saved_search_id)} waiting={awaiting.has(match.id)} />
-          ))}
-        </ul>
+        <div className="flex flex-col gap-6">
+          {groupByWatchlist(matches.data.items).map(([searchId, items]) => {
+            const waitingHere = items.filter((m) => awaiting.has(m.id)).length;
+            const assessing = items.filter((m) => !m.qualified_at).length;
+            return (
+              <section key={searchId} aria-labelledby={`wl-${searchId}`}>
+                <header className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 px-1">
+                  <h2 id={`wl-${searchId}`} className="font-medium">
+                    {names.get(searchId) ?? "A deleted watchlist"}
+                  </h2>
+                  <p className="text-sm text-muted">
+                    {plural(items.length, "notice")}
+                    {waitingHere ? ` · ${waitingHere} waiting for you` : ""}
+                    {assessing ? ` · ${assessing} being assessed` : ""}
+                  </p>
+                </header>
+                <ul className="flex flex-col gap-2">
+                  {items.map((match) => (
+                    <MatchRow key={match.id} match={match} waiting={awaiting.has(match.id)} />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+          {matches.data.next_cursor ? (
+            <p className="text-center text-xs text-muted">Showing the 200 most recent matches. Pick one watchlist above to see its own.</p>
+          ) : null}
+        </div>
       )}
     </>
   );
 }
 
-function MatchRow({ match, searchName, waiting }: { match: Match; searchName?: string; waiting: boolean }) {
+/** Matches per watchlist, in the order the watchlists first appear (newest match first). */
+function groupByWatchlist(items: Match[]): [string, Match[]][] {
+  const groups = new Map<string, Match[]>();
+  for (const match of items) groups.set(match.saved_search_id, [...(groups.get(match.saved_search_id) ?? []), match]);
+  return [...groups.entries()];
+}
+
+function MatchRow({ match, waiting }: { match: Match; waiting: boolean }) {
   const org = useOrg();
   const canWrite = useCan("write");
   const qualify = useQualify(org.id);
@@ -120,7 +150,6 @@ function MatchRow({ match, searchName, waiting }: { match: Match; searchName?: s
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <DeadlineChip at={match.notice_deadline_at} />
-          {searchName ? <Badge>{searchName}</Badge> : null}
           {reasonChips(match.reasons)
             .slice(0, 4)
             .map((reason) => (
@@ -142,7 +171,15 @@ function MatchRow({ match, searchName, waiting }: { match: Match; searchName?: s
             The assistant is assessing
           </Badge>
         ) : (
-          <span className="text-xs text-muted">{qualified ? <>Decided or assessed <Ago at={match.qualified_at} /></> : "Waiting for the assistant"}</span>
+          <span className="text-xs text-muted">
+            {qualified ? (
+              <>
+                Assessed <Ago at={match.qualified_at} />
+              </>
+            ) : (
+              "Waiting for the assistant"
+            )}
+          </span>
         )}
         {canWrite && !waiting ? (
           <Button

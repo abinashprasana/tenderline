@@ -157,6 +157,33 @@ test("explore notices, turn the filters into a watchlist, and find the decisions
   await expect(page.getByText("rejected a suggestion").first()).toBeVisible();
 });
 
+test("deadlines by week, audit search, matches by watchlist, live watchlist estimate, palette actions", async ({ page }) => {
+  await quietTips(page, account.orgId);
+  await page.goto(`/o/${account.orgId}/deadlines`);
+  await expect(page.getByText(/^(This week|Next week|Later)$/).first()).toBeVisible();
+  await expect(page.getByText("More deadlines on a day")).toBeVisible();
+
+  await page.goto(`/o/${account.orgId}/audit?actor=human`);
+  await expect(page.getByRole("heading", { name: "Today" }).first()).toBeVisible();
+  await page.getByLabel("Search the log").fill("rejected");
+  await expect(page.getByText("rejected a suggestion").first()).toBeVisible();
+  await expect(page.getByText("suggested an action")).toHaveCount(0);
+
+  await page.goto(`/o/${account.orgId}/matches`);
+  await expect(page.getByRole("heading", { name: "My first watchlist" })).toBeVisible();
+
+  await page.goto(`/o/${account.orgId}/searches`);
+  await expect(page.getByRole("heading", { name: "Watchlists", level: 1 })).toBeVisible();
+  await page.keyboard.press("Control+k");
+  await page.getByRole("option", { name: "New watchlist" }).click();
+  const builder = page.getByRole("dialog", { name: "New watchlist" });
+  await builder.getByRole("button", { name: /^CPV codes:|^Categories:/ }).click();
+  await page.getByRole("combobox", { name: "Search CPV codes" }).fill("72");
+  await page.getByRole("option", { name: /72000000/ }).click();
+  await page.keyboard.press("Escape");
+  await expect(builder.getByText(/About \d+\+? open notices? match/)).toBeVisible();
+});
+
 test("every screen passes axe in both themes, with introductions showing", async ({ page }) => {
   test.setTimeout(300_000); // ten screens, two themes, a full axe scan each
   const screens = ["", "/approvals", "/opportunities", "/notices", "/matches", "/deadlines", "/searches", "/audit", "/ingestion", "/settings"];

@@ -79,3 +79,24 @@ export function previousVisit(orgId: string, now = Date.now()): number | null {
   }
   return state.previous;
 }
+
+const RECENT = "tenderline.recent";
+
+/** The last few notices this person opened, newest first, for the command palette. */
+export function recentNotices(): { id: string; title: string }[] {
+  try {
+    const parsed = JSON.parse(read(RECENT) ?? "[]") as { id: string; title: string }[];
+    return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberNotice(id: string, title: string): void {
+  const next = [{ id, title }, ...recentNotices().filter((item) => item.id !== id)].slice(0, 5);
+  try {
+    localStorage.setItem(RECENT, JSON.stringify(next));
+  } catch {
+    /* storage blocked */
+  }
+}

@@ -1,7 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { BellPlus, SlidersHorizontal, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { HoverCard } from "radix-ui";
+import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type FormEvent } from "react";
 
 import { useNotices, type Notice } from "@/api/hooks";
 import { useCan, useOrg } from "@/app/org";
@@ -13,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
-import { date, moneyShort, number } from "@/lib/format";
+import { date, fullDateTime, money, moneyShort, number } from "@/lib/format";
 import { SCREEN } from "@/lib/labels";
 import type { NoticeSearch } from "@/router";
 
@@ -148,9 +149,45 @@ export function NoticeExplorer() {
   );
 }
 
+/** Hovering a row for half a second shows the essentials, so you can skim without opening each notice. */
 function Row({ notice, active, onOpen }: { notice: Notice; active: boolean; onOpen: () => void }) {
   return (
+    <HoverCard.Root openDelay={500} closeDelay={80}>
+      <HoverCard.Trigger asChild>
+        <RowButton notice={notice} active={active} onOpen={onOpen} />
+      </HoverCard.Trigger>
+      <HoverCard.Portal>
+        <HoverCard.Content
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          className="glass z-[60] w-[min(calc(100vw-2rem),26rem)] rounded-xl p-4 text-sm"
+        >
+          <p className="font-medium leading-snug">{notice.title}</p>
+          <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-x-3 gap-y-1.5 text-[0.8125rem]">
+            <dt className="text-muted">Buyer</dt>
+            <dd>{notice.buyer_name ?? "Not stated"}</dd>
+            <dt className="text-muted">Value</dt>
+            <dd>{money(notice.estimated_value, notice.currency)}</dd>
+            <dt className="text-muted">Closes</dt>
+            <dd>{fullDateTime(notice.deadline_at)}</dd>
+            <dt className="text-muted">Categories</dt>
+            <dd className="font-mono text-xs">{notice.cpv_codes.slice(0, 4).join(", ") || "None given"}</dd>
+          </dl>
+          {notice.summary ? <p className="mt-3 line-clamp-4 text-[0.8125rem] leading-relaxed text-muted">{notice.summary}</p> : null}
+          <p className="mt-3 text-xs text-muted">Select the row for the full notice and its history.</p>
+        </HoverCard.Content>
+      </HoverCard.Portal>
+    </HoverCard.Root>
+  );
+}
+
+const RowButton = forwardRef<HTMLButtonElement, { notice: Notice; active: boolean; onOpen: () => void } & ButtonHTMLAttributes<HTMLButtonElement>>(
+  function RowButton({ notice, active, onOpen, ...rest }, ref) {
+  return (
     <button
+      ref={ref}
+      {...rest}
       onClick={onOpen}
       className={cn(
         "grid h-full w-full grid-cols-[1fr_auto] items-center gap-x-4 border-b border-hairline px-4 text-left transition-colors md:grid-cols-[1fr_7rem_8rem_7rem_4rem]",
@@ -159,7 +196,7 @@ function Row({ notice, active, onOpen }: { notice: Notice; active: boolean; onOp
     >
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium">{notice.title}</span>
-        <span className="block truncate text-xs text-faint">
+        <span className="block truncate text-xs text-muted">
           {notice.buyer_name ?? "Buyer not stated"}
           {notice.current_version > 1 ? ` · changed (v${notice.current_version})` : ""}
         </span>
@@ -172,7 +209,8 @@ function Row({ notice, active, onOpen }: { notice: Notice; active: boolean; onOp
       <span className="hidden font-mono text-xs text-muted md:block">{notice.country ?? "—"}</span>
     </button>
   );
-}
+  },
+);
 
 function Filters({ value, onChange }: { value: Omit<NoticeSearch, "notice">; onChange: (next: Partial<NoticeSearch>) => void }) {
   const submitText = (event: FormEvent<HTMLFormElement>) => {

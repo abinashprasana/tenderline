@@ -2,10 +2,12 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 
 import { useAudit, useMembers } from "@/api/hooks";
 import { useOrg } from "@/app/org";
-import { AuditTimeline } from "@/components/audit-timeline";
+import { useState } from "react";
+
+import { actorName, AuditTimeline, describeAction } from "@/components/audit-timeline";
 import { EmptyLog } from "@/components/illustrations";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
 
 const ENTITIES = [
@@ -24,7 +26,17 @@ export function AuditLog() {
   const navigate = useNavigate({ from: "/o/$orgId/audit" });
   const members = useMembers(org.id);
   const audit = useAudit(org.id, { actor_type: search.actor, entity_type: search.entity, entity_id: search.id }, 50);
-  const entries = audit.data?.pages.flatMap((page) => page.items) ?? [];
+  const members_ = members.data ?? [];
+  const [words, setWords] = useState("");
+  const all = audit.data?.pages.flatMap((page) => page.items) ?? [];
+  // Search the entries already loaded, by what a person reads: who did it and what they did.
+  const terms = words.toLowerCase().split(/\s+/).filter(Boolean);
+  const entries = terms.length
+    ? all.filter((entry) => {
+        const text = `${actorName(entry, members_)} ${describeAction(entry.action)} ${entry.action}`.toLowerCase();
+        return terms.every((term) => text.includes(term));
+      })
+    : all;
 
   return (
     <>
@@ -37,6 +49,14 @@ export function AuditLog() {
         }}
         actions={
           <div className="flex flex-wrap gap-2">
+            <Input
+              type="search"
+              aria-label="Search the log"
+              placeholder="Search, e.g. rejected"
+              value={words}
+              onChange={(e) => setWords(e.target.value)}
+              className="w-48"
+            />
             <Select
               aria-label="Who"
               className="w-40"
@@ -69,10 +89,13 @@ export function AuditLog() {
         ) : audit.isError ? (
           <ErrorState error={audit.error} onRetry={() => void audit.refetch()} />
         ) : entries.length === 0 ? (
-          <EmptyState illustration={<EmptyLog />} title="No entries for this filter" />
+          <EmptyState illustration={<EmptyLog />} title={terms.length ? `Nothing matches “${words.trim()}”` : "No entries for this filter"} />
         ) : (
           <>
-            <AuditTimeline entries={entries} members={members.data ?? []} stagger={false} />
+            <AuditTimeline entries={entries} members={members_} stagger={false} byDay />
+            {terms.length && audit.hasNextPage ? (
+              <p className="pt-2 text-center text-xs text-muted">Searching the {all.length} most recent entries. Load older ones to search further back.</p>
+            ) : null}
             {audit.hasNextPage ? (
               <div className="flex justify-center py-4">
                 <Button size="sm" pending={audit.isFetchingNextPage} onClick={() => void audit.fetchNextPage()}>

@@ -1,11 +1,13 @@
 import { Bot, ChevronDown, Copy, User } from "lucide-react";
+import { Link, useParams } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import type { AuditEntry, Member } from "@/api/hooks";
 import { cn } from "@/lib/cn";
-import { dateTime, humanise, relative } from "@/lib/format";
+import { dateTime, dayHeading, humanise, relative } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 
 const GRAFANA = import.meta.env.VITE_GRAFANA_URL as string | undefined;
 
@@ -22,7 +24,19 @@ export function actorName(entry: AuditEntry, members: Member[]): string {
   return member ? (member.name ?? member.login) : "A former member";
 }
 
-export function AuditTimeline({ entries, members, stagger = true }: { entries: AuditEntry[]; members: Member[]; stagger?: boolean }) {
+export function AuditTimeline({
+  entries,
+  members,
+  stagger = true,
+  byDay = false,
+}: {
+  entries: AuditEntry[];
+  members: Member[];
+  stagger?: boolean;
+  /** Put a "Today" / "Yesterday" / date heading above each day's entries. */
+  byDay?: boolean;
+}) {
+  const now = useNow();
   return (
     <ol className="relative flex flex-col">
       <span className="absolute top-2 bottom-2 left-[15px] w-px bg-hairline" aria-hidden />
@@ -33,6 +47,11 @@ export function AuditTimeline({ entries, members, stagger = true }: { entries: A
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.2, delay: stagger ? Math.min(index, 12) * 0.03 : 0, ease: [0.22, 1, 0.36, 1] }}
         >
+          {byDay && (index === 0 || dayKey(entries[index - 1]!.occurred_at) !== dayKey(entry.occurred_at)) ? (
+            <h2 className="relative z-10 -ml-1 mt-3 mb-1 inline-block rounded-full bg-surface px-2 py-0.5 text-xs font-semibold first:mt-0">
+              {dayHeading(entry.occurred_at, now)}
+            </h2>
+          ) : null}
           <AuditRow entry={entry} members={members} />
         </motion.li>
       ))}
@@ -60,6 +79,7 @@ function AuditRow({ entry, members }: { entry: AuditEntry; members: Member[] }) 
         <p className="text-sm">
           <span className="font-medium">{actorName(entry, members)}</span>{" "}
           <span className="text-muted">{describeAction(entry.action)}</span>
+          <EntityLink entry={entry} />
         </p>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
           <time dateTime={entry.occurred_at} title={dateTime(entry.occurred_at)}>
@@ -161,4 +181,26 @@ function show(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value;
   return JSON.stringify(value);
+}
+
+const dayKey = (iso: string) => new Date(iso).toDateString();
+
+/** A short "open" link to what the entry is about, when there is a screen for it. */
+function EntityLink({ entry }: { entry: AuditEntry }) {
+  const { orgId } = useParams({ strict: false }) as { orgId?: string };
+  if (!orgId) return null;
+  const className = "ml-1.5 text-xs text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent";
+  if (entry.entity_type === "opportunity")
+    return (
+      <Link to="/o/$orgId/opportunities/$oppId" params={{ orgId, oppId: entry.entity_id }} className={className}>
+        open tender
+      </Link>
+    );
+  if (entry.entity_type === "saved_search" && entry.action !== "saved_search.deleted")
+    return (
+      <Link to="/o/$orgId/matches" params={{ orgId }} search={{ search: entry.entity_id }} className={className}>
+        see matches
+      </Link>
+    );
+  return null;
 }

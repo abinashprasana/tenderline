@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ExternalLink, Plus, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Dialog } from "radix-ui";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { useNotice, useNoticeVersions, useOpportunities, useTrackNotice } from "@/api/hooks";
@@ -13,6 +13,7 @@ import { Badge, STATUS_TONE } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ErrorState, SkeletonRows } from "@/components/ui/states";
 import { date, dateTime, humanise, money } from "@/lib/format";
+import { rememberNotice } from "@/lib/first-run";
 import { NOTICE_STATUS } from "@/lib/labels";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -54,6 +55,9 @@ function DrawerBody({ id }: { id: string }) {
   const canWrite = useCan("write");
   const tracked = opportunities.data?.items.find((o) => o.notice_id === id);
   const n = notice.data;
+  useEffect(() => {
+    if (n) rememberNotice(n.id, n.title);
+  }, [n]);
 
   return (
     <>

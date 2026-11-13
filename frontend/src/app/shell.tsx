@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useMatchRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   Bell,
@@ -134,7 +134,7 @@ export function Shell() {
         Skip to content
       </a>
       <aside className="glass fixed inset-y-3 left-3 z-30 hidden w-60 flex-col rounded-2xl lg:flex">
-        <Sidebar orgId={org.id} />
+        <Sidebar orgId={org.id} place="side" />
       </aside>
 
       <AnimatePresence>
@@ -155,7 +155,7 @@ export function Shell() {
               transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
               aria-label="Navigation"
             >
-              <Sidebar orgId={org.id} />
+              <Sidebar orgId={org.id} place="drawer" />
             </motion.aside>
           </>
         ) : null}
@@ -177,8 +177,9 @@ export function Shell() {
   );
 }
 
-function Sidebar({ orgId }: { orgId: string }) {
+function Sidebar({ orgId, place }: { orgId: string; place: "side" | "drawer" }) {
   const summary = useSummary(orgId);
+  const matchRoute = useMatchRoute();
   const counts = {
     decide: summary.data?.notices_awaiting_decision ?? 0,
     deadlines: summary.data?.deadlines_next_7_days ?? 0,
@@ -205,15 +206,24 @@ function Sidebar({ orgId }: { orgId: string }) {
                     className={cn(
                       "group relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-muted",
                       "transition-colors duration-150 hover:bg-surface-2/70 hover:text-text",
-                      "data-[status=active]:bg-accent-soft data-[status=active]:text-text",
+                      "data-[status=active]:text-text",
                     )}
                   >
-                    <item.icon className="size-4 shrink-0 group-data-[status=active]:text-accent" aria-hidden />
-                    <span className="flex-1">{item.label}</span>
+                    {/* The highlight slides from the old item to the new one, so you see where you went. */}
+                    {matchRoute({ to: item.to, params: { orgId }, fuzzy: !item.exact }) ? (
+                      <motion.span
+                        layoutId={`nav-active-${place}`}
+                        className="absolute inset-0 rounded-lg bg-accent-soft"
+                        transition={{ type: "spring", stiffness: 520, damping: 42 }}
+                        aria-hidden
+                      />
+                    ) : null}
+                    <item.icon className="relative size-4 shrink-0 group-data-[status=active]:text-accent" aria-hidden />
+                    <span className="relative flex-1">{item.label}</span>
                     {item.count && counts[item.count] > 0 ? (
                       <span
                         className={cn(
-                          "tabular rounded-full px-1.5 text-[0.6875rem] leading-5 font-semibold",
+                          "tabular relative rounded-full px-1.5 text-[0.6875rem] leading-5 font-semibold",
                           item.count === "decide" ? "bg-accent text-accent-fg" : "bg-soon-soft text-soon",
                         )}
                       >

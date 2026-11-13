@@ -9,17 +9,34 @@ import { DeadlineChip } from "@/components/deadline-chip";
 import { EmptyCalendar } from "@/components/illustrations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EmptyState, ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
+import { EmptyState, ErrorState, PageHeader, SkeletonRows, Tooltip } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
-import { humanise } from "@/lib/format";
+import { dayHeading, humanise } from "@/lib/format";
 import { downloadCalendar } from "@/lib/ics";
-import { SCREEN } from "@/lib/labels";
+import { plural, SCREEN } from "@/lib/labels";
 import { useNow } from "@/lib/use-now";
 
 const dayKey = (iso: string) => {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+/** Monday 00:00 of the week containing `ms`, local time. */
+function weekStart(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime();
+}
+
+/** "This week", "Next week" or "Later", for a yyyy-mm-dd day key. */
+function weekGroup(key: string, now: number): string {
+  const week = weekStart(now);
+  const day = new Date(`${key}T12:00:00`).getTime();
+  if (day < week + 7 * 86_400_000) return "This week";
+  if (day < week + 14 * 86_400_000) return "Next week";
+  return "Later";
+}
 
 export function Deadlines() {
   const org = useOrg();
@@ -94,10 +111,23 @@ export function Deadlines() {
               </div>
             ) : null}
             <ol className="flex flex-col">
-              {days.map((key) => (
+              {days.map((key, index) => {
+                const group = weekGroup(key, now);
+                const firstOfGroup = index === 0 || weekGroup(days[index - 1]!, now) !== group;
+                const count = days.filter((k) => weekGroup(k, now) === group).reduce((sum, k) => sum + (byDay.get(k)?.length ?? 0), 0);
+                return (
                 <li key={key} className="border-b border-hairline last:border-0">
-                  <h2 className="sticky top-16 bg-surface px-2 pt-3 pb-1 text-xs font-medium text-faint">
-                    {new Intl.DateTimeFormat("en-IE", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${key}T12:00:00`))}
+                  {firstOfGroup && !selectedDay ? (
+                    <p className="flex items-baseline gap-2 px-2 pt-5 pb-1 first:pt-2">
+                      <span className="text-sm font-semibold">{group}</span>
+                      <span className="text-xs text-muted">{plural(count, "item")}</span>
+                    </p>
+                  ) : null}
+                  <h2 className="sticky top-16 z-10 bg-surface px-2 pt-3 pb-1 text-xs font-medium text-muted">
+                    {dayHeading(`${key}T12:00:00`, now)}
+                    {["Today", "Tomorrow"].includes(dayHeading(`${key}T12:00:00`, now))
+                      ? `, ${new Intl.DateTimeFormat("en-IE", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${key}T12:00:00`))}`
+                      : ""}
                   </h2>
                   <ul>
                     {byDay.get(key)!.map((d) => (
@@ -118,19 +148,32 @@ export function Deadlines() {
                     ))}
                   </ul>
                 </li>
-              ))}
+                );
+              })}
             </ol>
           </section>
-          <MonthHeatmap counts={byDay} selected={selectedDay} onSelect={setSelectedDay} />
+          <MonthHeatmap counts={byDay} titles={titles} now={now} selected={selectedDay} onSelect={setSelectedDay} />
         </div>
       )}
     </>
   );
 }
 
-function MonthHeatmap({ counts, selected, onSelect }: { counts: Map<string, Deadline[]>; selected: string | null; onSelect: (day: string | null) => void }) {
+function MonthHeatmap({
+  counts,
+  titles,
+  now,
+  selected,
+  onSelect,
+}: {
+  counts: Map<string, Deadline[]>;
+  titles: Map<string, string>;
+  now: number;
+  selected: string | null;
+  onSelect: (day: string | null) => void;
+}) {
   const [offset, setOffset] = useState(0);
-  const today = new Date();
+  const today = new Date(now);
   const first = new Date(today.getFullYear(), today.getMonth() + offset, 1);
   const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   const lead = (first.getDay() + 6) % 7; // Monday first
@@ -147,7 +190,7 @@ function MonthHeatmap({ counts, selected, onSelect }: { counts: Map<string, Dead
           <ChevronRight className="size-4" />
         </Button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-[0.6875rem] text-faint" aria-hidden>
+      <div className="grid grid-cols-7 gap-1 text-center text-[0.6875rem] text-muted" aria-hidden>
         {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
           <span key={i}>{d}</span>
         ))}
@@ -159,7 +202,11 @@ function MonthHeatmap({ counts, selected, onSelect }: { counts: Map<string, Dead
           const list = counts.get(key) ?? [];
           const intensity = list.length / max;
           const isToday = offset === 0 && day === today.getDate();
-          return (
+          const describe = list
+            .slice(0, 4)
+            .map((d) => `${d.kind === "submission" ? "Submission" : humanise(d.kind)}: ${titles.get(d.opportunity_id) ?? "a tracked tender"}`)
+            .join("\n");
+          const cell = (
             <button
               key={key}
               disabled={list.length === 0}
@@ -177,8 +224,23 @@ function MonthHeatmap({ counts, selected, onSelect }: { counts: Map<string, Dead
               {day}
             </button>
           );
+          return list.length ? (
+            <Tooltip key={key} label={<span className="whitespace-pre-line">{describe + (list.length > 4 ? `\n+${list.length - 4} more` : "")}</span>}>
+              {cell}
+            </Tooltip>
+          ) : (
+            cell
+          );
         })}
       </div>
+      <div className="mt-3 flex items-center gap-2 text-[0.6875rem] text-muted" aria-hidden>
+        Fewer
+        {[18, 35, 52, 68].map((pct) => (
+          <span key={pct} className="size-3 rounded-sm" style={{ background: `color-mix(in oklch, var(--soon) ${pct}%, transparent)` }} />
+        ))}
+        More deadlines on a day
+      </div>
+      <p className="mt-2 text-xs text-muted">Select a day to see only its deadlines.</p>
     </section>
   );
 }

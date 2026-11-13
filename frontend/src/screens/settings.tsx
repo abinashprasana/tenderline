@@ -1,5 +1,6 @@
 import { Trash2, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 
 import { ApiError, describeError } from "@/api/errors";
@@ -47,6 +48,56 @@ export function Settings() {
   );
 }
 
+/** What the assistant gets from each part of the profile, and how much of it is filled in. */
+const PROFILE_PARTS: { key: keyof OrgProfile; label: string; why: string }[] = [
+  { key: "description", label: "What you do", why: "the main thing it compares each notice against" },
+  { key: "capabilities", label: "Capabilities", why: "named skills it looks for in the notice" },
+  { key: "certifications", label: "Certifications", why: "so it can flag tenders that require one you lack" },
+  { key: "regions", label: "Regions", why: "to spot work outside where you deliver" },
+  { key: "min_contract_value", label: "Contract size", why: "to flag tenders too small or too large for you" },
+];
+
+function filled(form: OrgProfile, key: keyof OrgProfile): boolean {
+  if (key === "min_contract_value") return form.min_contract_value != null || form.max_contract_value != null;
+  const value = form[key];
+  return Array.isArray(value) ? value.length > 0 : typeof value === "string" ? value.trim().length >= 20 : value != null;
+}
+
+function ProfileMeter({ form }: { form: OrgProfile }) {
+  const done = PROFILE_PARTS.filter((part) => filled(form, part.key));
+  const missing = PROFILE_PARTS.filter((part) => !filled(form, part.key));
+  const pct = Math.round((done.length / PROFILE_PARTS.length) * 100);
+  return (
+    <div className="rounded-lg border border-hairline bg-surface-2 p-3">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium">Profile {pct === 100 ? "complete" : `${pct}% complete`}</span>
+        <span className="tabular font-mono text-xs text-muted">
+          {done.length}/{PROFILE_PARTS.length}
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 rounded-full bg-surface-3" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Profile completeness">
+        <motion.div
+          className="h-full rounded-full bg-accent"
+          initial={false}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        />
+      </div>
+      {missing.length ? (
+        <ul className="mt-2 flex flex-col gap-0.5 text-xs text-muted">
+          {missing.slice(0, 3).map((part) => (
+            <li key={part.key}>
+              Add <span className="text-text">{part.label.toLowerCase()}</span>: {part.why}.
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-muted">The assistant has everything it uses.</p>
+      )}
+    </div>
+  );
+}
+
 function ProfileForm({ initialName, initialTimezone, profile, readOnly }: { initialName: string; initialTimezone: string | null; profile: OrgProfile; readOnly: boolean }) {
   const org = useOrg();
   const patch = usePatchOrg(org.id);
@@ -74,6 +125,7 @@ function ProfileForm({ initialName, initialTimezone, profile, readOnly }: { init
         <h2 className="font-medium">Company profile</h2>
         <p className="text-sm text-muted">The assistant reads this to judge whether a tender fits. Plain, specific words work best.</p>
       </div>
+      <ProfileMeter form={form} />
       <fieldset disabled={readOnly} className="flex flex-col gap-4">
         <Field label="Company name">{(p) => <Input {...p} value={name} onChange={(e) => setName(e.target.value)} minLength={2} maxLength={200} required />}</Field>
         <Field label="What you do">{(p) => <Textarea {...p} value={form.description} onChange={(e) => set("description", e.target.value)} maxLength={2000} />}</Field>
