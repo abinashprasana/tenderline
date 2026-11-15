@@ -11,3 +11,7 @@ __pycache__/
 !*.tfvars.example
 backups/
 .coverage
+
+# Local editor and assistant tooling
+.claude/
+graphify-out/
