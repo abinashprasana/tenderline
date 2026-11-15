@@ -30,6 +30,7 @@ The backend was built API-first with no frontend. Bid managers now need a screen
 - Per-browser memory only (`lib/first-run.ts`, localStorage): dismissed introductions, the dismissed checklist and the last-visit time. Nothing about guidance is stored on the server; "Show tips again" in Settings clears it.
 - One shared clock (`lib/use-now.ts`) drives every countdown, "x minutes ago" and the greeting, so render stays pure and times never go stale. The greeting is neutral between 22:00 and 05:00.
 - Deadlines can be exported as an iCalendar file built in the browser (`lib/ics.ts`).
+- Smaller aids: deadlines grouped by week, a searchable audit log with day headings, a hover preview on notice rows, a live estimate of how many open notices a new watchlist would match, matched notices grouped by watchlist, a profile-completeness bar, and actions and recently opened notices in the command palette.
 
 **Two things the tests caught.** The WebGL aurora used to compile and draw before the first paint, which cost about a second of main-thread time without a GPU; it now starts after the headline has painted, renders at half resolution and fades in. And the CSS minifier dropped `backdrop-filter: none` when it was written before the `-webkit-` form, so "Reduce transparency" did nothing in the production build; the prefixed property now comes first.
 

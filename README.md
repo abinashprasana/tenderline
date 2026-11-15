@@ -91,7 +91,7 @@ uv sync && uv run pytest         # unit, contract, integration, workflow and cra
 uv run ruff check src tests scripts && uv run mypy
 ```
 
-Web app: `cd frontend && npm test` (Vitest), `npx playwright test` against a running dev stack (flows, axe in both themes), and `E2E_BASE_URL=http://localhost:8080 npx playwright test performance` for the performance budget.
+Web app: `cd frontend && npm test` (Vitest), then with `docker compose up` running, `E2E_BASE_URL=http://localhost:8080 npx playwright test` (the full flows, axe in both themes and the performance budget, against the production build). It needs notices in the database: run `tenderline demo` or `tenderline seed` first.
 
 No test calls the live TED API or a real LLM (a network guard enforces it). Crash tests kill real worker processes mid-workflow and assert recovery with no duplicated action. Load tests: `scripts/loadtest.sh` (dockerised k6; prints p95 latency and error rate).
 
