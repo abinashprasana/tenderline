@@ -179,7 +179,7 @@ export function Approvals() {
             }
           >
             {summary.data?.matches_awaiting_assessment
-              ? `The assistant is still assessing ${plural(summary.data.matches_awaiting_assessment, "matched notice")}. They will appear here shortly.`
+              ? `${plural(summary.data.matches_awaiting_assessment, "matched notice")} ${summary.data.matches_awaiting_assessment === 1 ? "has" : "have"} not been assessed yet. New matches are assessed as they arrive; open Matched notices to ask for older ones.`
               : "New suggestions appear here when a notice matches one of your watchlists and the assistant has assessed it."}
           </EmptyState>
         </div>

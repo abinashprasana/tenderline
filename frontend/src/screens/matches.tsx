@@ -104,7 +104,7 @@ export function Matches() {
                   <p className="text-sm text-muted">
                     {plural(items.length, "notice")}
                     {waitingHere ? ` · ${waitingHere} waiting for you` : ""}
-                    {assessing ? ` · ${assessing} being assessed` : ""}
+                    {assessing ? ` · ${assessing} not assessed yet` : ""}
                   </p>
                 </header>
                 <ul className="flex flex-col gap-2">

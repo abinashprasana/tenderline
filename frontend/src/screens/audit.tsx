@@ -59,7 +59,7 @@ export function AuditLog() {
             />
             <Select
               aria-label="Who"
-              className="w-40"
+              className="w-60"
               value={search.actor ?? ""}
               onChange={(e) => void navigate({ search: (prev) => ({ ...prev, actor: (e.target.value || undefined) as "human" | "agent" | undefined }) })}
             >

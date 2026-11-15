@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, BellRing, FileText, Moon, ShieldCheck, Sparkles, Sun, UserCheck } from "lucide-react";
+import { ArrowRight, BellRing, FileText, Moon, ShieldCheck, Sparkles, Sun, Target, UserCheck } from "lucide-react";
 import { motion, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
 import { lazy, Suspense, useRef, type ReactNode } from "react";
 
@@ -45,7 +45,7 @@ export function Landing() {
       <footer className="border-t border-hairline">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-8 text-xs text-faint sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <Logo compact />
-          <p className="max-w-2xl">{metadata.data?.disclaimer ?? "Tenderline provides information and AI-generated proposals only. A human decides every action."}</p>
+          <p className="max-w-2xl">{metadata.data?.disclaimer ?? "Tenderline provides information and AI suggestions only. A person decides every action."}</p>
           {metadata.data ? <p className="font-mono">v{metadata.data.version}</p> : null}
         </div>
       </footer>
@@ -142,10 +142,10 @@ function Point({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 /* ------------------------------------------------------------------ how it works */
 const STAGES = [
   { title: "A notice is published", body: "On TED or eTenders. Tenderline collects it, and every later correction to it.", icon: FileText },
-  { title: "It matches a search", body: "Your saved searches: CPV codes, keywords, buyers, value range.", icon: Sparkles },
-  { title: "The agent proposes", body: "A fit score from 0 to 100, its reasons and risks, and up to five typed actions.", icon: Sparkles },
+  { title: "It matches a watchlist", body: "Your watchlists: categories, keywords, buyers, countries, value range.", icon: Target },
+  { title: "The assistant suggests", body: "A fit score from 0 to 100, its reasons and risks, and up to five concrete actions.", icon: Sparkles },
   { title: "A person decides", body: "Approve, edit then approve, or reject with a reason. Every step is in the audit log.", icon: UserCheck },
-  { title: "Deadlines are watched", body: "The opportunity is tracked, reminders go out, and changes to the notice are flagged.", icon: BellRing },
+  { title: "Deadlines are watched", body: "The tender joins your pipeline, reminders come due on time, and changes to the notice are flagged.", icon: BellRing },
 ];
 
 function HowItWorks() {
@@ -231,7 +231,7 @@ function Screenshot({ theme }: { theme: "dark" | "light" }) {
             The approvals inbox, where most of the work happens.
           </h2>
           <p className="text-muted">
-            Notices waiting for a decision, best fit first. Each proposed action shows what it will do, and the agent's
+            Notices waiting for a decision, best fit first. Each suggested action shows what it will do, and the assistant's
             text is labelled as a suggestion. Keyboard shortcuts move through the list.
           </p>
         </div>

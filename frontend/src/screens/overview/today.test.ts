@@ -63,7 +63,7 @@ describe("next best action", () => {
 
   it("asks for a watchlist, reports assessing, or says all clear", () => {
     expect(nextAction({ ...base, watchlists: 0 }).kind).toBe("watchlist");
-    expect(nextAction({ ...base, assessing: 4 }).title).toBe("The assistant is assessing 4 notices");
+    expect(nextAction({ ...base, assessing: 4 }).title).toBe("4 matched notices not assessed yet");
     expect(nextAction(base).kind).toBe("clear");
   });
 });

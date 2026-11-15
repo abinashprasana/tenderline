@@ -22,7 +22,7 @@ const THREE_DAYS = 3 * 86_400_000;
  * 3. a tracked tender whose notice the buyer changed;
  * 4. any notices waiting for a decision;
  * 5. no watchlist yet;
- * 6. the assistant is still assessing matches;
+ * 6. matched notices the assistant has not assessed yet;
  * otherwise everything is up to date.
  */
 export function nextAction(input: {
@@ -104,9 +104,9 @@ export function nextAction(input: {
   if (assessing > 0) {
     return {
       kind: "assessing",
-      title: `The assistant is assessing ${plural(assessing, "notice")}`,
-      body: "Suggestions will appear in To decide as each one is finished.",
-      cta: "See matched notices",
+      title: `${plural(assessing, "matched notice")} not assessed yet`,
+      body: "New matches are assessed as they arrive. Older ones from a watchlist's first sweep wait until you ask.",
+      cta: "Review matched notices",
       to: "/o/$orgId/matches",
     };
   }
