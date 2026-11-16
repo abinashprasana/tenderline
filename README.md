@@ -43,9 +43,6 @@ Then it stops. **Nothing the assistant suggests runs until a person approves it.
 
 <div align="center">
 
-<a href="demo/tenderline-walkthrough.mp4"><img src="demo/walkthrough-poster.jpg" alt="The To decide screen from the Tenderline walkthrough video" width="820"/></a>
-
-
 
 https://github.com/user-attachments/assets/0473f129-014e-4796-88e7-a0f3cd357f82
 
