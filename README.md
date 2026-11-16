@@ -16,7 +16,7 @@
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-traced-F5A800?style=for-the-badge&logo=opentelemetry&logoColor=black)](https://opentelemetry.io)
 [![Docker](https://img.shields.io/badge/Docker-arm64%20%2B%20amd64-2496ED?style=for-the-badge&logo=docker&logoColor=white)](docker-compose.yml)
 <br/>
-[![Tests](https://img.shields.io/badge/tests-191%20backend%20%C2%B7%2029%20unit%20%C2%B7%2010%20E2E-2ea44f?style=for-the-badge)](tests/)
+[![Tests](https://img.shields.io/badge/tests-191%20backend%20%C2%B7%2047%20unit%20%C2%B7%2013%20E2E-2ea44f?style=for-the-badge)](tests/)
 [![Accessibility](https://img.shields.io/badge/axe-WCAG%202.1%20AA-8A2BE2?style=for-the-badge)](frontend/e2e/app.spec.ts)
 
 <br/>
@@ -39,17 +39,31 @@ Then it stops. **Nothing the assistant suggests runs until a person approves it.
 
 ---
 
+## 🎬 See it in action
+
+<div align="center">
+
+<a href="demo/tenderline-walkthrough.mp4"><img src="demo/walkthrough-poster.jpg" alt="The To decide screen from the Tenderline walkthrough video" width="820"/></a>
+
+**[▶ Watch the 4-minute walkthrough](demo/tenderline-walkthrough.mp4)** (1080p, no sound needed)
+
+</div>
+
+A new company sets itself up and gets its first assessed tenders in about a minute. Then a company that has used Tenderline for a while goes through a normal week: Today, deciding suggestions, the pipeline, deadlines, searching notices, Wren the guide, the audit log and settings.
+
+---
+
 ## ⚡ Quick stats
 
 <div align="center">
 
 | 🔌 API operations | 🧪 Backend tests | 🧩 Frontend unit tests | 🎭 End-to-end tests | 🏷️ CPV labels | 📐 ADRs |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **46** | **191** | **29** | **10** | **9,454** | **6** |
+| **46** | **191** | **47** | **13** | **9,454** | **6** |
 
 | 🚀 Landing page LCP | 📦 Initial JavaScript | 📏 Layout shift | ♿ Accessibility | 📈 k6 p95 read / write |
 |:---:|:---:|:---:|:---:|:---:|
-| **~1.1 s** (budget 2.5 s) | **241 KB** (budget 250 KB) | **0.00** | **0 serious axe findings, both themes** | **208 ms / 489 ms** |
+| **~1.1 s** (budget 2.5 s) | **246 KB** (budget 250 KB) | **0.00** | **0 serious axe findings, both themes** | **208 ms / 489 ms** |
 
 </div>
 
@@ -99,56 +113,11 @@ flowchart LR
 
 DBOS keeps workflow state in a second database on the same Postgres instance (`tenderline_dbos`), so an approved action or a deadline timer resumes exactly where it stopped after a crash or a deploy. Three small schedules keep things honest: one restarts approved actions whose start was lost to a crash, one gives every open opportunity a live workflow after a deploy, and one deletes old workflow records.
 
-### 🙋 One decision, end to end
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant T as 🌍 TED
-    participant S as ⚙️ Tenderline
-    participant A as 🤖 Assistant
-    actor P as 👤 Bid manager
-
-    T->>S: New notice (or a correction to one)
-    S->>S: Store version, match against watchlists
-    S->>A: Notice + company profile (notice text treated as untrusted)
-    A-->>S: Fit 0–100, reasons, risks, ≤ 5 typed actions
-    Note over S: Validated against strict schemas.<br/>Anything malformed is dropped.
-    S-->>P: "To decide" inbox, best fit first
-    alt Approve, or edit then approve
-        P->>S: Decision + Idempotency-Key
-        S->>S: Durable execute workflow (runs once, even on retry)
-        S-->>P: ✅ Done, recorded in the audit log
-    else Not for us
-        P->>S: Reject with a reason
-        S-->>P: Nothing runs. The reason is logged.
-    end
-```
-
 ### 📈 A tender's life in the pipeline
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> New: tracked
-    New --> Bidding: decide to bid
-    New --> NoBid: not for us
-    NoBid --> Bidding: change of mind
-    Bidding --> NoBid
-    Bidding --> Submitted: response sent
-    Submitted --> Won: award notice names you
-    Submitted --> Lost: awarded elsewhere
-    Won --> [*]
-    Lost --> [*]
+**New → Bidding → Submitted → Won or Lost**, with **No bid** reachable from New or Bidding (and back to Bidding on a change of mind). Won and Lost are read from the published award notice and recorded automatically.
 
-    note right of Submitted
-        The award is read from the
-        published award notice and
-        recorded automatically.
-    end note
-```
-
-The API refuses any move that is not on this diagram (`409 invalid_transition`), and the web app only lets you drop a card on a column it can actually move to.
+The API refuses any other move (`409 invalid_transition`), and the web app only lets you drop a card on a column it can actually move to.
 
 ---
 
@@ -158,7 +127,7 @@ A Vite + React 19 single-page app in `frontend/`, served by Caddy on the same or
 
 | Screen | What it is for |
 |:--|:--|
-| 🌅 **Today** | One "do this next" card chosen by fixed rules, what happened since your last visit, and a getting-started checklist that ticks itself from real data. |
+| 🌅 **Today** | One "do this next" card chosen by fixed rules, what changed since your last visit, the next 30 days with the nearest deadlines named, the pipeline at a glance and how well waiting notices fit. |
 | 📥 **To decide** | The assistant's suggestions, best fit first, with its reasons and risks. Approve, edit then approve, reject, or **approve all** for a notice in one step. Keyboard: `j` `k` `a` `e` `r`. |
 | 📋 **Pipeline** | A kanban board. Cards only drop where the status machine allows; a refused move slides back. |
 | ⏰ **Deadlines** | This week / next week / later, a month heatmap, and an iCalendar export for Outlook or Google Calendar. |
@@ -167,9 +136,10 @@ A Vite + React 19 single-page app in `frontend/`, served by Caddy on the same or
 | 🔔 **Watchlists** | Categories (CPV), keywords, buyers, countries and value range, with a live "about N open notices match" estimate. |
 | 📜 **Audit log** | Every suggestion and decision, searchable, with before-and-after diffs and trace ids. |
 | 📡 **Data sources** | When TED and eTenders were last collected, and when the next run is due. |
-| ⚙️ **Settings** | Company profile with a completeness meter, members and roles, theme and transparency preferences. |
+| ⚙️ **Settings** | Company profile with a completeness meter, members and roles, theme, transparency and guide preferences. |
+| 🦉 **Wren, the guide** | An owl in the corner (press `w`) that explains the screen you are on and, when you type what you want to do, flies to the right control. It stays still unless you ask for help. 3D on desktop, a flat version on phones and under reduced motion. |
 
-New users get a three-step setup (company → what to watch for → a live view of the first tenders arriving) that ends on their first real decision. Help appears in place: each screen introduces itself once, the `?` button brings it back, and terms like *fit* and *CPV* explain themselves on hover. There is no pop-up tour, because usability research shows people skip them.
+New users get a three-step setup (company → what to watch for → a live view of the first tenders arriving) that ends on their first real decision. Help appears in place: each screen introduces itself once, the `?` button brings it back, and terms like *fit* and *CPV* explain themselves on hover. There is no pop-up tour.
 
 ---
 
@@ -190,6 +160,8 @@ The model can only return one of five typed actions, each validated against a st
 <br/>
 
 Tenant isolation is enforced by **Postgres row-level security**, not by remembering to add a filter. The app connects as a role that is not the table owner and cannot bypass RLS, and every request runs in a transaction scoped with `set_config('app.org_id', …, true)`. Addressing another tenant's organisation returns `404`, so ids cannot be probed. See [ADR 0004](docs/adr/0004-tenant-isolation.md).
+
+Tenant-owned tables (`memberships`, `saved_searches`, `matches`, `opportunities`, `deadlines`, `agent_proposals`, `approvals`, `audit_log`, `llm_calls`, `idempotency_keys`, plus `organisations`) have row-level security. Notices, buyers, CPV codes and ingestion runs are shared public data.
 
 </details>
 
@@ -222,41 +194,13 @@ Buyer text reaches the model as quoted data, never as instructions, and anything
 
 ---
 
-## 🗃️ Data model
-
-```mermaid
-erDiagram
-  organisations ||--o{ memberships : has
-  users ||--o{ memberships : has
-  organisations ||--o{ saved_searches : owns
-  organisations ||--o{ opportunities : owns
-  buyers ||--o{ notices : issues
-  notices ||--o{ notice_versions : "history (append-only)"
-  notices ||--o{ lots : has
-  notices ||--o{ notice_cpv : tagged
-  cpv_codes ||--o{ notice_cpv : ""
-  saved_searches ||--o{ matches : produces
-  notices ||--o{ matches : "matched by"
-  notices ||--o{ opportunities : tracked
-  opportunities ||--o{ deadlines : schedules
-  matches ||--o{ agent_proposals : yields
-  agent_proposals ||--o| approvals : "decided by a human"
-  organisations ||--o{ audit_log : "append-only"
-  organisations ||--o{ llm_calls : records
-  ingestion_runs }o--|| notices : "cursor and counts"
-```
-
-Tenant-owned tables (`memberships`, `saved_searches`, `matches`, `opportunities`, `deadlines`, `agent_proposals`, `approvals`, `audit_log`, `llm_calls`, `idempotency_keys`, plus `organisations`) have row-level security. Notices, buyers, CPV codes and ingestion runs are shared public data.
-
----
-
 ## 🧪 Testing and verification
 
 | Layer | What it proves | Count |
 |:--|:--|--:|
 | 🐍 **Backend** (pytest, real Postgres) | Tenant isolation at SQL and API level, approvals, idempotency, notice versions and corrigenda, OAuth, rate limits, tracing, and crash recovery with real killed workers | **191** |
-| 🧩 **Frontend unit** (Vitest) | The fetch wrapper (429 retry with the same key, 401, 204), error text, money formatting from decimal strings, payload validation, roles, the greeting by hour, next-best-action rules, the calendar file | **29** |
-| 🎭 **End to end** (Playwright) | Guided setup to first decision, approve all, edit then approve, reject, a decision made elsewhere (409), pipeline moves, calendar download, watchlist from filters, phone width, reduced motion and transparency | **10** |
+| 🧩 **Frontend unit** (Vitest) | The fetch wrapper (429 retry with the same key, 401, 204), error text, money formatting, payload validation, roles, next-best-action rules, the calendar file, suggestion paging, guide tasks and Wren's flight paths | **47** |
+| 🎭 **End to end** (Playwright) | Guided setup to first decision, approve all, edit then approve, reject, a decision made elsewhere (409), pipeline moves, calendar download, watchlist from filters, the guide and Wren, phone width, reduced motion and transparency, the landing page budget | **13** |
 | ♿ **Accessibility** (axe-core) | WCAG 2.1 AA on every screen, dark and light, with zero serious or critical findings | all screens |
 | 📊 **Load** (k6) | Read and write scenarios against seeded data, with p95 and error-rate thresholds | 2 scenarios |
 | 🔁 **Drift checks** (CI) | Migrations match the models, the OpenAPI spec matches the code, the TypeScript client matches the spec, the payload schemas match the backend | 4 |
@@ -375,7 +319,7 @@ The accounts, keys and exact variable names are in **[SETUP.md](SETUP.md)**. Bac
 
 **🤖 The assistant's quality is not yet measured.** `data/eval/sample_labelled.jsonl` is a synthetic set with hand-written labels, there to exercise the evaluation command. Judging a real model needs notices labelled by real bid managers.
 
-**📄 Lists show at most 200 items.** To decide, Matched notices and Pipeline load the 200 most recent. That suits a small company; a very broad watchlist would be cut off.
+**📄 Lists are capped.** To decide loads up to 2,000 suggestions; Matched notices and Pipeline load the 200 most recent. That suits a small company, but a very broad watchlist would be cut off.
 
 **🔑 The session token lives in session storage.** A strict Content-Security-Policy is what protects it. Cookie sessions with CSRF protection would be the upgrade for a large public deployment ([ADR 0006](docs/adr/0006-web-app.md)).
 
