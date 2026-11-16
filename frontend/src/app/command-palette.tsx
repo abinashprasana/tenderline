@@ -62,7 +62,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             </Dialog.Overlay>
             <Dialog.Content asChild forceMount aria-describedby={undefined}>
               <motion.div
-                className="glass fixed top-[12dvh] left-1/2 z-50 w-[min(calc(100vw-1.5rem),40rem)] overflow-hidden rounded-2xl"
+                className="glass glass-strong fixed top-[12dvh] left-1/2 z-50 w-[min(calc(100vw-1.5rem),40rem)] overflow-hidden rounded-2xl"
                 style={{ x: "-50%" }}
                 initial={{ opacity: 0, scale: 0.97, y: -6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}

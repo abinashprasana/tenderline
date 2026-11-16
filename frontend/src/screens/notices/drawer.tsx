@@ -30,7 +30,7 @@ export function NoticeDrawer({ id, onClose }: { id: string | undefined; onClose:
             </Dialog.Overlay>
             <Dialog.Content asChild forceMount aria-describedby={undefined}>
               <motion.aside
-                className="glass fixed inset-y-2 right-2 z-50 flex w-[min(calc(100vw-1rem),40rem)] flex-col overflow-hidden rounded-2xl focus:outline-none"
+                className="glass glass-strong fixed inset-y-2 right-2 z-50 flex w-[min(calc(100vw-1rem),40rem)] flex-col overflow-hidden rounded-2xl focus:outline-none"
                 initial={{ x: "104%" }}
                 animate={{ x: 0 }}
                 exit={{ x: "104%" }}

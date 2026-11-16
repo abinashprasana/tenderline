@@ -44,7 +44,7 @@ export function Dialog({
             <Primitive.Content asChild forceMount>
               <motion.div
                 className={cn(
-                  "glass fixed top-1/2 left-1/2 z-50 flex max-h-[min(90dvh,48rem)] w-[min(calc(100vw-2rem),32rem)]",
+                  "glass glass-strong fixed top-1/2 left-1/2 z-50 flex max-h-[min(90dvh,48rem)] w-[min(calc(100vw-2rem),32rem)]",
                   "flex-col overflow-hidden rounded-2xl focus:outline-none",
                   className,
                 )}

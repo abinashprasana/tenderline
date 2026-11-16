@@ -84,7 +84,7 @@ export function CpvPicker({
           <Popover.Content
             align="start"
             sideOffset={6}
-            className="glass z-[60] w-[min(calc(100vw-2rem),28rem)] rounded-xl p-2"
+            className="glass glass-strong z-[60] w-[min(calc(100vw-2rem),28rem)] rounded-xl p-2"
           >
             <input
               autoFocus

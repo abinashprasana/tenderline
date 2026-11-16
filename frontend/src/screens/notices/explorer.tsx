@@ -61,6 +61,7 @@ export function NoticeExplorer() {
             {canWrite && (filters.cpv || filters.q || filters.country || filters.min_value || filters.max_value) ? (
               <Button asChild size="sm" variant="primary">
                 <Link
+                  data-wren-target="watch-these"
                   to="/o/$orgId/searches"
                   params={{ orgId: org.id }}
                   search={{ create: true, cpv: filters.cpv, q: filters.q, country: filters.country, min_value: filters.min_value, max_value: filters.max_value }}
@@ -85,14 +86,15 @@ export function NoticeExplorer() {
             <p className="text-sm text-muted" aria-live="polite">
               {query.isPending ? "Loading…" : `${number(rows.length)}${query.hasNextPage ? "+" : ""} notices`}
             </p>
-            {active.map(([key]) => (
+            {active.map(([key, value]) => (
               <Badge key={key} className="pr-1">
-                {key.replace(/_/g, " ")}
-                <button className="ml-1 grid size-4 place-items-center rounded-full hover:bg-surface-3" aria-label={`Clear ${key}`} onClick={() => setFilters({ [key]: undefined })}>
+                {key.replace(/_/g, " ")}: {String(value)}
+                <button className="ml-1 grid size-8 place-items-center rounded-full hover:bg-surface-3" aria-label={`Clear ${key}`} onClick={() => setFilters({ [key]: undefined })}>
                   <X className="size-3" />
                 </button>
               </Badge>
             ))}
+            {active.length > 0 ? <Button size="sm" variant="ghost" onClick={() => void navigate({ search: { sort: filters.sort } })}>Clear all filters</Button> : null}
             <label className="ml-auto flex items-center gap-2 text-sm text-muted">
               Sort
               <Select
@@ -120,8 +122,8 @@ export function NoticeExplorer() {
           ) : query.isError ? (
             <ErrorState error={query.error} onRetry={() => void query.refetch()} />
           ) : rows.length === 0 ? (
-            <EmptyState illustration={<NoResults />} title="No notices match these filters">
-              Loosen a filter, or look at Data sources to see when notices were last collected.
+            <EmptyState illustration={<NoResults />} title={active.length ? "No notices match these filters" : "No notices collected yet"} action={active.length ? <Button onClick={() => void navigate({ search: {} })}>Clear filters</Button> : <Button asChild><Link to="/o/$orgId/ingestion" params={{ orgId: org.id }}>Check data sources</Link></Button>}>
+              {active.length ? "Try a broader category or remove a filter to explore more notices." : "Check Data sources for the latest collection status."}
             </EmptyState>
           ) : (
             <div ref={scroller} className="h-[calc(100dvh-15rem)] min-h-96 overflow-y-auto" tabIndex={0} aria-label="Notice list, scrollable">
@@ -161,7 +163,7 @@ function Row({ notice, active, onOpen }: { notice: Notice; active: boolean; onOp
           side="bottom"
           align="start"
           sideOffset={4}
-          className="glass z-[60] w-[min(calc(100vw-2rem),26rem)] rounded-xl p-4 text-sm"
+          className="glass glass-strong z-[60] w-[min(calc(100vw-2rem),26rem)] rounded-xl p-4 text-sm"
         >
           <p className="font-medium leading-snug">{notice.title}</p>
           <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-x-3 gap-y-1.5 text-[0.8125rem]">
@@ -226,7 +228,7 @@ function Filters({ value, onChange }: { value: Omit<NoticeSearch, "notice">; onC
     <div className="flex flex-col gap-4">
       <form onSubmit={submitText} className="flex flex-col gap-4">
         <Field label="Words in title or summary">
-          {(props) => <Input {...props} key={value.q ?? ""} name="q" type="search" defaultValue={value.q ?? ""} onBlur={(e) => commit("q", e.target.value)} placeholder="e.g. cloud hosting" />}
+          {(props) => <Input {...props} key={value.q ?? ""} name="q" data-wren-target="notice-search" type="search" defaultValue={value.q ?? ""} onBlur={(e) => commit("q", e.target.value)} placeholder="e.g. cloud hosting" />}
         </Field>
         <Field label="Buyer">
           {(props) => <Input {...props} key={value.buyer ?? ""} name="buyer" defaultValue={value.buyer ?? ""} onBlur={(e) => commit("buyer", e.target.value)} placeholder="e.g. HSE" />}

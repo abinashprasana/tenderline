@@ -5,6 +5,7 @@ import { Tooltip as Primitive } from "radix-ui";
 
 import { describeError } from "@/api/errors";
 import { cn } from "@/lib/cn";
+import { openGuide } from "@/lib/guidance";
 import { useDismissed } from "@/lib/first-run";
 
 import { Button } from "./button";
@@ -45,7 +46,7 @@ export function EmptyState({
       {illustration ? (
         <div className="text-accent">{illustration}</div>
       ) : icon ? (
-        <div className="grid size-11 place-items-center rounded-full border border-hairline bg-surface-2 text-muted">
+        <div className="grid size-8 place-items-center rounded-full border border-hairline bg-surface-2 text-muted">
           {icon}
         </div>
       ) : null}
@@ -62,7 +63,7 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
       role="alert"
       className={cn("flex flex-col items-center gap-3 px-6 py-12 text-center", className)}
     >
-      <div className="grid size-11 place-items-center rounded-full bg-lost-soft text-lost">
+      <div className="grid size-8 place-items-center rounded-full bg-lost-soft text-lost">
         <AlertTriangle className="size-5" />
       </div>
       <p className="max-w-sm text-sm text-muted">{describeError(error)}</p>
@@ -128,17 +129,16 @@ export function PageHeader({
     <header className="pb-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-[1.375rem] font-semibold tracking-[-0.01em]">
+          <h1 className="flex items-center gap-2 text-[clamp(1.375rem,2.5vw,1.75rem)] font-semibold tracking-[-0.01em]">
             {title}
             {intro ? (
-              <Tooltip label={open ? "Hide the introduction" : "How does this screen work?"}>
+              <Tooltip label="Open help for this screen">
                 <button
                   type="button"
-                  onClick={() => setDismissed(open)}
-                  aria-expanded={open}
+                  onClick={openGuide}
                   aria-label="How this screen works"
                   className={cn(
-                    "grid size-6 place-items-center rounded-full border border-hairline text-faint transition-colors hover:border-hairline-strong hover:text-text",
+                    "grid size-8 place-items-center rounded-full border border-hairline text-faint transition-colors hover:border-hairline-strong hover:text-text",
                     open && "border-accent/40 bg-accent-soft text-accent",
                   )}
                 >

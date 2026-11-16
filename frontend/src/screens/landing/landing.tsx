@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, BellRing, FileText, Moon, ShieldCheck, Sparkles, Sun, Target, UserCheck } from "lucide-react";
-import { motion, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
-import { lazy, Suspense, useRef, type ReactNode } from "react";
+import { motion, useInView, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useMetadata } from "@/api/hooks";
 import { useSession } from "@/auth/use-session";
@@ -26,6 +26,7 @@ export function Landing() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Logo />
           <nav className="flex items-center gap-1">
+            <a href="#try-a-decision" className="rounded-full px-3 py-3 text-sm text-muted hover:text-text" onClick={() => document.getElementById("try-a-decision")?.focus()}>Try a decision</a>
             <Button variant="ghost" size="icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
               {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </Button>
@@ -66,18 +67,17 @@ function Hero({ theme, signedIn, devServer }: { theme: "dark" | "light"; signedI
       <div className="mx-auto grid w-full max-w-6xl items-end gap-10 px-4 pt-28 pb-20 sm:px-6 lg:grid-cols-[1.35fr_1fr] lg:pb-28">
         <div>
           <motion.p
-            className="mb-5 inline-flex items-center gap-2 rounded-full border border-hairline bg-surface/40 px-3 py-1 text-xs text-muted backdrop-blur"
+            className="mb-5 inline-flex items-center rounded-full border border-hairline bg-surface/40 px-3 py-1 text-xs text-muted backdrop-blur"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.56, ease: EASE }}
           >
-            <span className="size-1.5 rounded-full bg-accent" aria-hidden />
             For Irish companies bidding on public contracts
           </motion.p>
           <h1 className="text-[clamp(2.4rem,6.2vw,4.6rem)] leading-[0.98] font-semibold tracking-[-0.035em]">
             <Line delay={0.05}>The tenders worth your time,</Line>
             <Line delay={0.15} className="text-accent">
-              and nothing done without you.
+              and nothing done without you
             </Line>
           </h1>
           <motion.p
@@ -149,30 +149,61 @@ const STAGES = [
 ];
 
 function HowItWorks() {
-  const ref = useRef<HTMLElement>(null);
+  const row = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 75%", "end 60%"] });
-  const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 30, restDelta: 0.001 });
+  // The line draws once, start to finish, when the steps come into view. Tying it to the scroll position
+  // left it half drawn whenever someone stopped scrolling with the steps on screen.
+  const inView = useInView(row, { once: true, amount: 0.6 });
+  // On phones the steps stack, and the last step's text height varies: measure where its icon's centre
+  // is, so the vertical line ends there instead of running on below it.
+  const list = useRef<HTMLOListElement>(null);
+  const [lineEnd, setLineEnd] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const ol = list.current;
+    if (!ol) return;
+    const measure = () => {
+      const icons = ol.querySelectorAll<HTMLElement>(":scope > li > span");
+      const last = icons[icons.length - 1];
+      if (!last || !row.current) return;
+      const rowBox = row.current.getBoundingClientRect();
+      const box = last.getBoundingClientRect();
+      setLineEnd(Math.round(rowBox.bottom - (box.top + box.height / 2)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(ol);
+    return () => observer.disconnect();
+  }, []);
+  // A spring rather than a timed tween: the landing page already loads it, and it keeps the page's
+  // JavaScript inside its budget. Slightly over-damped, so it eases in and settles without a bounce.
+  const target = useMotionValue(0);
+  const progress = useSpring(target, { stiffness: 26, damping: 13, restDelta: 0.001 });
+  useEffect(() => {
+    if (!inView) return;
+    if (reduce) progress.jump(1);
+    target.set(1);
+  }, [inView, reduce, progress, target]);
   return (
-    <section ref={ref} className="relative mx-auto max-w-6xl px-4 py-24 sm:px-6 lg:py-32" aria-labelledby="how-title">
+    <section className="relative mx-auto max-w-6xl px-4 py-24 sm:px-6 lg:py-32" aria-labelledby="how-title">
       <div className="max-w-xl">
         <p className="text-sm font-medium text-accent">How it works</p>
         <h2 id="how-title" className="mt-2 text-[clamp(1.8rem,3.6vw,2.6rem)] leading-tight font-semibold tracking-[-0.02em]">
-          From a buyer's notice to your decision, with a record of each step.
+          From a buyer's notice to your decision
         </h2>
       </div>
 
-      <div className="relative mt-14">
-        {/* The line that draws as you scroll: horizontal on wide screens, vertical on phones. */}
-        <svg className="absolute top-6 right-[10%] left-[10%] hidden h-2 lg:block" viewBox="0 0 100 2" preserveAspectRatio="none" aria-hidden>
-          <line x1="0" y1="1" x2="100" y2="1" stroke="var(--hairline-strong)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-          <motion.line x1="0" y1="1" x2="100" y2="1" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ pathLength: reduce ? 1 : progress }} />
-        </svg>
-        <svg className="absolute top-6 bottom-6 left-6 w-2 lg:hidden" viewBox="0 0 2 100" preserveAspectRatio="none" aria-hidden>
-          <line x1="1" y1="0" x2="1" y2="100" stroke="var(--hairline-strong)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-          <motion.line x1="1" y1="0" x2="1" y2="100" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ pathLength: reduce ? 1 : progress }} />
-        </svg>
-        <ol className="relative grid gap-10 lg:grid-cols-5 lg:gap-6">
+      <div ref={row} className="relative mt-14">
+        {/* The track and the line drawn over it. Plain bars grown with a transform: an SVG line drawn with
+            pathLength broke into dashes once stretched. Wide screens: from the first icon's centre to the last
+            (five columns with 1.5rem gaps put those 10% minus 0.6rem in from each side). Phones: down through
+            the icon centres, ending at the last one (measured, since the last step's text height varies). */}
+        <div className="absolute top-[1.4375rem] right-[calc(10%-0.6rem)] left-[calc(10%-0.6rem)] hidden h-0.5 rounded-full bg-hairline-strong lg:block" aria-hidden>
+          <motion.div className="size-full origin-left rounded-full bg-accent" style={{ scaleX: reduce ? 1 : progress }} />
+        </div>
+        <div className="absolute top-6 left-[1.4375rem] w-0.5 rounded-full bg-hairline-strong lg:hidden" style={{ bottom: lineEnd ?? 24 }} aria-hidden>
+          <motion.div className="size-full origin-top rounded-full bg-accent" style={{ scaleY: reduce ? 1 : progress }} />
+        </div>
+        <ol ref={list} className="relative grid gap-10 lg:grid-cols-5 lg:gap-6">
           {STAGES.map((stage, index) => (
             <Stage key={stage.title} index={index} progress={progress} reduce={Boolean(reduce)} {...stage} />
           ))}
@@ -199,20 +230,24 @@ function Stage({
 }) {
   const at = index / (STAGES.length - 1);
   // The icon lights up as the line reaches it; the text stays at full contrast throughout.
-  const lit = useTransform(progress, [Math.max(0, at - 0.08), at], [0, 1]);
-  const y = useTransform(lit, [0, 1], [6, 0]);
+  const lit = useTransform(progress, [Math.max(0, at - 0.08), Math.max(0.001, at)], [0, 1]);
+  // A small pop as the line arrives. The text never moves, so the steps stay aligned throughout.
+  const scale = useTransform(lit, [0, 0.6, 1], [1, 1.08, 1]);
   return (
-    <motion.li className="relative flex gap-4 pl-0 lg:flex-col lg:items-center lg:text-center" style={reduce ? undefined : { y }}>
-      <span className="relative z-10 grid size-12 shrink-0 place-items-center rounded-full border border-hairline-strong bg-surface">
+    <li className="relative flex gap-4 pl-0 lg:flex-col lg:items-center lg:text-center">
+      <motion.span
+        className="relative z-10 grid size-12 shrink-0 place-items-center rounded-full border border-hairline-strong bg-surface"
+        style={reduce ? undefined : { scale }}
+      >
         <motion.span className="absolute inset-0 rounded-full bg-accent" style={{ opacity: reduce ? 1 : lit }} aria-hidden />
         <Icon className="relative size-5 text-text" aria-hidden />
-      </span>
+      </motion.span>
       <div>
         <p className="tabular font-mono text-xs text-muted">0{index + 1}</p>
         <h3 className="mt-1 font-medium">{title}</h3>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">{body}</p>
       </div>
-    </motion.li>
+    </li>
   );
 }
 
@@ -228,7 +263,7 @@ function Screenshot({ theme }: { theme: "dark" | "light" }) {
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mb-10 grid gap-4 lg:grid-cols-[1fr_1fr] lg:items-end">
           <h2 id="screen-title" className="text-[clamp(1.6rem,3.2vw,2.3rem)] leading-tight font-semibold tracking-[-0.02em]">
-            The approvals inbox, where most of the work happens.
+            Most of the work happens in one inbox
           </h2>
           <p className="text-muted">
             Notices waiting for a decision, best fit first. Each suggested action shows what it will do, and the assistant's
@@ -273,7 +308,7 @@ function Sources({ metadata }: { metadata: { data_sources: Record<string, unknow
         <div>
           <ShieldCheck className="size-6 text-accent" aria-hidden />
           <h2 id="sources-title" className="mt-3 text-[clamp(1.5rem,2.8vw,2rem)] leading-tight font-semibold tracking-[-0.02em]">
-            Open data, credited properly.
+            Where the notices come from
           </h2>
           {typeof policy === "string" ? <p className="mt-3 text-sm leading-relaxed text-muted">{policy}</p> : null}
         </div>
