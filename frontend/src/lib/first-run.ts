@@ -6,8 +6,10 @@ import { useSyncExternalStore } from "react";
  */
 const PREFIX = "tenderline.tip.";
 const listeners = new Set<() => void>();
+const memory = new Map<string, string | null>();
 
 function read(key: string): string | null {
+  if (memory.has(key)) return memory.get(key) ?? null;
   try {
     return localStorage.getItem(key);
   } catch {
@@ -16,9 +18,11 @@ function read(key: string): string | null {
 }
 
 function write(key: string, value: string | null): void {
+  memory.set(key, value);
   try {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
+    memory.delete(key);
   } catch {
     /* storage blocked */
   }
@@ -38,6 +42,7 @@ export function useDismissed(id: string): [boolean, (dismissed: boolean) => void
 
 /** Brings back every tip and page introduction (Settings > Preferences). */
 export function resetTips(): void {
+  memory.clear();
   try {
     Object.keys(localStorage)
       .filter((key) => key.startsWith(PREFIX))

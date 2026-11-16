@@ -70,7 +70,7 @@ export function SavedSearches() {
         }}
         actions={
           canWrite ? (
-            <Button variant="primary" onClick={() => setEditing("new")}>
+            <Button variant="primary" data-wren-target="new-watchlist" onClick={() => setEditing("new")}>
               <Plus className="size-4" /> New watchlist
             </Button>
           ) : null

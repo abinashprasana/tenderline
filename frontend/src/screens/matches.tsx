@@ -183,6 +183,7 @@ function MatchRow({ match, waiting }: { match: Match; waiting: boolean }) {
         )}
         {canWrite && !waiting ? (
           <Button
+            data-wren-target="assess-now"
             size="sm"
             pending={qualify.isPending}
             onClick={() =>

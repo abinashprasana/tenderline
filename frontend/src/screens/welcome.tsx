@@ -9,6 +9,7 @@ import { useCreateOrg, useCreateSearch, useMatches, useSummary } from "@/api/hoo
 import { CpvPicker } from "@/components/cpv-picker";
 import { Logo } from "@/components/logo";
 import { TagInput } from "@/components/tag-input";
+import { TenderlineGuide } from "@/components/tenderline-guide";
 import { Term } from "@/components/term";
 import { Button, Spinner } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
@@ -43,6 +44,7 @@ export function Welcome() {
 
   return (
     <main className="app-backdrop grain grid min-h-dvh place-items-center px-4 py-10">
+      <TenderlineGuide />
       <div className="w-full max-w-xl">
         <div className="mb-5 flex items-center justify-between">
           <Link to="/" aria-label="Tenderline home">

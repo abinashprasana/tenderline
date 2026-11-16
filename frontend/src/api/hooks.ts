@@ -77,15 +77,37 @@ export const useMembers = (org: string) =>
 /* ------------------------------------------------------------------ proposals */
 export type ProposalStatus = "pending" | "approved" | "rejected" | "cancelled" | "executed" | "failed";
 
+/** The most suggestions one list loads, across pages. Far above what a team decides in a week. */
+const PROPOSALS_CAP = 2000;
+
+/**
+ * Suggestions for an organisation. The API returns at most 200 per page, so without an explicit
+ * `limit` this follows the cursor until every page is loaded (up to PROPOSALS_CAP). Loading only the
+ * first page used to hide notices from To decide once more than 200 suggestions were waiting.
+ */
 export const useProposals = (org: string, params: { status?: ProposalStatus; notice_id?: string; limit?: number }) =>
   useQuery({
     queryKey: keys.proposals(org, params),
-    queryFn: () =>
-      unwrap(
+    queryFn: async () => {
+      const first = await unwrap(
         api.GET("/v1/organisations/{org_id}/agent-proposals", {
           params: { path: { org_id: org }, query: { limit: 200, ...params } },
         }),
-      ),
+      );
+      if (params.limit !== undefined) return first;
+      const items = [...first.items];
+      let cursor = first.next_cursor;
+      while (cursor && items.length < PROPOSALS_CAP) {
+        const page = await unwrap(
+          api.GET("/v1/organisations/{org_id}/agent-proposals", {
+            params: { path: { org_id: org }, query: { limit: 200, ...params, cursor } },
+          }),
+        );
+        items.push(...page.items);
+        cursor = page.next_cursor;
+      }
+      return { ...first, items, next_cursor: cursor };
+    },
     placeholderData: keepPreviousData,
   });
 
@@ -114,10 +136,12 @@ export const useProposal = (org: string, id: string | undefined) =>
 function useIdempotent<TVars, TData>(
   run: (vars: TVars, key: string) => Promise<TData>,
   invalidate: (vars: TVars) => QueryKey[],
+  mutationKey?: QueryKey,
 ) {
   const queryClient = useQueryClient();
   const key = useRef<string | null>(null);
   return useMutation({
+    mutationKey,
     mutationFn: (vars: TVars) => {
       key.current ??= newIdempotencyKey();
       return run(vars, key.current);
@@ -142,6 +166,7 @@ export const useApprove = (org: string) =>
         }),
       ),
     () => [["org", org]],
+    ["approve"],
   );
 
 export const useEditApprove = (org: string) =>
@@ -154,6 +179,7 @@ export const useEditApprove = (org: string) =>
         }),
       ),
     () => [["org", org]],
+    ["edit-approve"],
   );
 
 export const useReject = (org: string) =>
@@ -166,6 +192,7 @@ export const useReject = (org: string) =>
         }),
       ),
     () => [["org", org]],
+    ["reject"],
   );
 
 /* ------------------------------------------------------------------ opportunities and deadlines */
@@ -194,6 +221,7 @@ export const useOpportunity = (org: string, id: string) =>
 export function useSetStatus(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: ["set-status"],
     mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
       unwrap(
         api.PATCH("/v1/organisations/{org_id}/opportunities/{opp_id}/status", {

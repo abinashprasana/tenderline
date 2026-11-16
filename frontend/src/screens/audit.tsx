@@ -50,6 +50,7 @@ export function AuditLog() {
         actions={
           <div className="flex flex-wrap gap-2">
             <Input
+              data-wren-target="audit-search"
               type="search"
               aria-label="Search the log"
               placeholder="Search, e.g. rejected"

@@ -17,6 +17,7 @@ import {
 import { useCan, useOrg } from "@/app/org";
 import { useSession } from "@/auth/use-session";
 import { TagInput } from "@/components/tag-input";
+import { GuidePreferences } from "@/components/tenderline-guide";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, PageHeader, SkeletonRows } from "@/components/ui/states";
@@ -38,10 +39,13 @@ export function Settings() {
       ) : details.isError ? (
         <ErrorState error={details.error} onRetry={() => void details.refetch()} />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
+        // Members and preferences stack in the second column, so it ends close to where the long profile form does.
+        <div className="grid items-start gap-4 xl:grid-cols-2">
           <ProfileForm key={details.data.id + details.data.name} initialName={details.data.name} initialTimezone={details.data.timezone} profile={details.data.profile as OrgProfile} readOnly={!isAdmin} />
-          <MembersPanel readOnly={!isAdmin} />
-          <Preferences />
+          <div className="flex flex-col gap-4">
+            <MembersPanel readOnly={!isAdmin} />
+            <Preferences />
+          </div>
         </div>
       )}
     </>
@@ -122,7 +126,7 @@ function ProfileForm({ initialName, initialTimezone, profile, readOnly }: { init
   return (
     <form onSubmit={(e) => void submit(e).catch(() => {})} className="panel flex flex-col gap-4 p-5">
       <div>
-        <h2 className="font-medium">Company profile</h2>
+        <h2 data-wren-target="company-profile" className="font-medium">Company profile</h2>
         <p className="text-sm text-muted">The assistant reads this to judge whether a tender fits. Plain, specific words work best.</p>
       </div>
       <ProfileMeter form={form} />
@@ -188,6 +192,7 @@ function Preferences() {
           ))}
         </div>
       </div>
+      <GuidePreferences />
       <label className="flex items-center justify-between gap-3 text-sm">
         <span>
           Reduce transparency
@@ -237,7 +242,7 @@ function MembersPanel({ readOnly }: { readOnly: boolean }) {
   return (
     <section className="panel flex flex-col gap-4 p-5">
       <div>
-        <h2 className="font-medium">Members</h2>
+        <h2 data-wren-target="team" className="font-medium">Members</h2>
         <p className="text-sm text-muted">Viewers can look. Reviewers can also decide suggestions. Bid managers can also change watchlists and the pipeline. Owners can do everything, including this page.</p>
       </div>
       {members.isPending ? (

@@ -18,7 +18,7 @@ import { countdown, greeting } from "@/lib/format";
 import { plural, RUN_STATUS } from "@/lib/labels";
 import { useNow } from "@/lib/use-now";
 
-import { DeadlineRiver, FitHistogram, PipelineBars, Ticker } from "./charts";
+import { DeadlineRiver, FitBands, FitHistogram, NextDeadlines, PipelineBars, Ticker } from "./charts";
 import { nextAction, sinceLastVisit, type NextAction } from "./today";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -91,7 +91,7 @@ export function Overview() {
 
       <div className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
         <NextActionCard action={action} />
-        <section className="panel flex flex-col justify-center p-5" aria-label="Since your last visit">
+        <section className="panel flex flex-col p-5" aria-label="Since your last visit">
           <h2 className="text-sm font-medium text-muted">
             {lastVisit ? (
               <>
@@ -116,12 +116,14 @@ export function Overview() {
             <p className="mt-2 text-sm">Nothing new. You are up to date.</p>
           ) : null}
           {s ? (
-            <p className={cn("text-sm text-muted", lastVisit ? "mt-3 border-t border-hairline pt-3" : "mt-2")}>
-              You have decided <span className="tabular font-mono text-text">{s.decisions_today}</span> today and{" "}
-              <span className="tabular font-mono text-text">{s.decisions_last_7_days}</span> in the last 7 days.
-            </p>
+            <dl className={cn("grid flex-1 auto-rows-fr grid-cols-2 gap-2", lastVisit ? "mt-3 border-t border-hairline pt-3" : "mt-3")}>
+              <Stat label="Decided today" value={s.decisions_today} />
+              <Stat label="Decided in 7 days" value={s.decisions_last_7_days} />
+              <Stat label="Being assessed" value={s.matches_awaiting_assessment} />
+              <Stat label="Watchlists" value={searches.data?.items.length} />
+            </dl>
           ) : (
-            <Skeleton className="mt-2 h-10" />
+            <Skeleton className="mt-3 h-28" />
           )}
         </section>
       </div>
@@ -169,7 +171,10 @@ export function Overview() {
           {deadlines.isPending ? (
             <Skeleton className="h-24" />
           ) : deadlines.data?.length ? (
-            <DeadlineRiver deadlines={deadlines.data} now={now} orgId={org.id} titles={titles} />
+            <>
+              <DeadlineRiver deadlines={deadlines.data} now={now} orgId={org.id} titles={titles} />
+              <NextDeadlines deadlines={deadlines.data} now={now} orgId={org.id} titles={titles} />
+            </>
           ) : (
             <EmptyState title="No deadlines coming up" className="py-6">
               Track a tender to see its submission deadline here.
@@ -177,7 +182,14 @@ export function Overview() {
           )}
         </Card>
         <Card title="Your pipeline" subtitle="Tenders you are tracking, by status">
-          {s ? <PipelineBars byStatus={s.opportunities_by_status} orgId={org.id} /> : <Skeleton className="h-36" />}
+          {s ? (
+            <>
+              <PipelineBars byStatus={s.opportunities_by_status} orgId={org.id} />
+              <PipelineOutcome byStatus={s.opportunities_by_status} />
+            </>
+          ) : (
+            <Skeleton className="h-36" />
+          )}
         </Card>
       </div>
 
@@ -192,7 +204,10 @@ export function Overview() {
         >
           {s ? (
             s.notices_awaiting_decision ? (
-              <FitHistogram buckets={s.fit_score_histogram} />
+              <>
+                <FitHistogram buckets={s.fit_score_histogram} />
+                <FitBands buckets={s.fit_score_histogram} orgId={org.id} />
+              </>
             ) : (
               <EmptyState title="No notices waiting" className="py-6">
                 Scores appear when the assistant has assessed new matches.
@@ -215,7 +230,7 @@ export function Overview() {
           {activity.isPending ? (
             <Skeleton className="h-40" />
           ) : entries?.length ? (
-            <AuditTimeline entries={entries.slice(0, 6)} members={members.data ?? []} />
+            <AuditTimeline entries={entries.slice(0, 5)} members={members.data ?? []} />
           ) : (
             <EmptyState title="No activity yet" className="py-6" />
           )}
@@ -250,10 +265,12 @@ function NextActionCard({ action }: { action: NextAction | null }) {
   const urgent = action.kind === "deadline";
   return (
     <motion.section
+      data-wren-target="next-action"
+      data-perch-x="72"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: EASE }}
-      className={cn("panel relative overflow-hidden p-5 sm:p-6", urgent ? "border-soon/40" : action.kind === "clear" ? "" : "border-accent/40")}
+      className={cn("panel relative overflow-hidden border-l-4 p-5 sm:p-7", urgent ? "border-soon/40" : action.kind === "clear" ? "" : "border-accent/40")}
       aria-labelledby="next-title"
     >
       <span aria-hidden className={cn("absolute -top-16 -right-16 size-48 rounded-full blur-3xl", urgent ? "bg-soon-soft" : "bg-accent-soft")} />
@@ -263,7 +280,7 @@ function NextActionCard({ action }: { action: NextAction | null }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium tracking-[0.06em] text-muted uppercase">{action.kind === "clear" ? "All clear" : "Do this next"}</p>
-          <h2 id="next-title" className="mt-1 text-lg leading-snug font-semibold">
+          <h2 id="next-title" className="mt-2 text-xl leading-snug font-semibold">
             {action.title}
           </h2>
           <p className="mt-1 text-sm text-muted">
@@ -325,6 +342,38 @@ function Kpi({
         {hint ? <span className="text-xs text-muted">{hint}</span> : null}
       </Link>
     </motion.div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number | undefined }) {
+  return (
+    <div className="flex flex-col justify-between gap-2 rounded-lg bg-surface-2/60 px-3 py-2.5">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="tabular font-mono text-2xl leading-none">{value ?? "–"}</dd>
+    </div>
+  );
+}
+
+/** How decided tenders turned out, so the outcome bars read as a result rather than loose numbers. */
+function PipelineOutcome({ byStatus }: { byStatus: Record<string, number> }) {
+  const won = byStatus.won ?? 0;
+  const lost = byStatus.lost ?? 0;
+  const open = (byStatus.new ?? 0) + (byStatus.bid ?? 0) + (byStatus.submitted ?? 0);
+  const decided = won + lost;
+  return (
+    <div className="mt-auto pt-4">
+      <p className="border-t border-hairline pt-3 text-sm text-muted">
+        <span className="tabular font-mono text-text">{open}</span> still open.{" "}
+        {decided ? (
+          <>
+            Won <span className="tabular font-mono text-text">{won}</span> of {plural(decided, "awarded tender")} (
+            <span className="tabular font-mono text-text">{Math.round((won / decided) * 100)}%</span>).
+          </>
+        ) : (
+          "No awards yet."
+        )}
+      </p>
+    </div>
   );
 }
 

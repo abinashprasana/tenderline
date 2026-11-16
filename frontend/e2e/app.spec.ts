@@ -44,7 +44,8 @@ test("guided setup ends with real tenders ready to decide", async ({ page, reque
   await expect(page.getByRole("heading", { name: "To decide" })).toBeVisible();
   await expect(page.getByRole("region", { name: "How this screen works" })).toHaveCount(0);
   await page.getByRole("button", { name: "How this screen works" }).click();
-  await expect(page.getByRole("region", { name: "How this screen works" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Tenderline Guide" })).toBeVisible();
+  await page.getByRole("button", { name: "Close guide" }).click();
   await waitForProposals(request, account, 6);
 });
 

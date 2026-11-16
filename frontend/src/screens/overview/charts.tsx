@@ -5,7 +5,7 @@ import { useLayoutEffect, useRef } from "react";
 import type { Deadline, Summary } from "@/api/hooks";
 import { Tooltip } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
-import { date, fullDateTime, STATUS_LABEL } from "@/lib/format";
+import { countdown, date, fullDateTime, STATUS_LABEL } from "@/lib/format";
 import { plural } from "@/lib/labels";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -59,7 +59,7 @@ export function PipelineBars({ byStatus, orgId }: { byStatus: Summary["opportuni
     no_bid: "bg-faint",
   };
   return (
-    <ul className="flex flex-col gap-1" aria-label="Tenders in the pipeline by status">
+    <ul className="flex flex-1 flex-col justify-between gap-1" aria-label="Tenders in the pipeline by status">
       {order.map((status, index) => {
         const count = byStatus[status] ?? 0;
         return (
@@ -94,8 +94,8 @@ export function FitHistogram({ buckets }: { buckets: Summary["fit_score_histogra
   const max = Math.max(1, ...buckets.map((b) => b.notices));
   const total = buckets.reduce((sum, b) => sum + b.notices, 0);
   return (
-    <figure>
-      <div className="flex h-36 items-end gap-1.5" role="group" aria-label={`Fit of ${plural(total, "notice")} waiting for a decision`}>
+    <figure className="flex flex-1 flex-col">
+      <div className="flex min-h-36 flex-1 items-end gap-1.5" role="group" aria-label={`Fit of ${plural(total, "notice")} waiting for a decision`}>
         {buckets.map((bucket, index) => {
           const height = (bucket.notices / max) * 100;
           const band = bucket.lower >= 70 ? "bg-won" : bucket.lower >= 40 ? "bg-soon" : "bg-lost/80";
@@ -200,5 +200,83 @@ export function DeadlineRiver({
         </span>
       </figcaption>
     </figure>
+  );
+}
+
+/** Waiting notices grouped into the three fit bands the histogram colours, as plain numbers. */
+export function FitBands({ buckets, orgId }: { buckets: Summary["fit_score_histogram"]; orgId: string }) {
+  const count = (from: number, to: number) => buckets.filter((b) => b.lower >= from && b.lower < to).reduce((sum, b) => sum + b.notices, 0);
+  const bands = [
+    { label: "Strong", range: "70 and up", notices: count(70, 101), dot: "bg-won" },
+    { label: "Possible", range: "40 to 69", notices: count(40, 70), dot: "bg-soon" },
+    { label: "Weak", range: "under 40", notices: count(0, 40), dot: "bg-lost/80" },
+  ];
+  const strong = bands[0]?.notices ?? 0;
+  return (
+    <div className="mt-4 border-t border-hairline pt-4">
+      <dl className="grid grid-cols-3 gap-2">
+        {bands.map((band) => (
+          <div key={band.label} className="rounded-lg bg-surface-2/60 px-3 py-2">
+            <dt className="flex items-center gap-1.5 text-xs text-muted">
+              <span className={cn("size-2 rounded-full", band.dot)} />
+              {band.label}
+            </dt>
+            <dd className="tabular mt-1 font-mono text-lg leading-none">{band.notices}</dd>
+            <dd className="mt-1 text-[0.6875rem] text-muted">{band.range}</dd>
+          </div>
+        ))}
+      </dl>
+      {strong ? (
+        <Link to="/o/$orgId/approvals" params={{ orgId }} search={{ filter: "strong" }} className="mt-3 inline-flex text-sm text-accent underline-offset-4 hover:underline">
+          Review the {plural(strong, "strong fit")} first
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+/** The next few dated items, nearest first, so the strip above has names attached. */
+export function NextDeadlines({
+  deadlines,
+  now,
+  orgId,
+  titles,
+  count = 3,
+}: {
+  deadlines: Deadline[];
+  now: number;
+  orgId: string;
+  titles: Map<string, string>;
+  count?: number;
+}) {
+  const next = deadlines
+    .filter((d) => new Date(d.due_at).getTime() >= now)
+    .sort((a, b) => a.due_at.localeCompare(b.due_at))
+    .slice(0, count);
+  if (!next.length) return null;
+  return (
+    <div className="mt-4 border-t border-hairline pt-3">
+      <h3 className="text-xs font-medium text-muted">Coming up first</h3>
+      <ul className="mt-1.5 flex flex-col">
+        {next.map((d) => (
+          <li key={d.id}>
+            <Link
+              to="/o/$orgId/opportunities/$oppId"
+              params={{ orgId, oppId: d.opportunity_id }}
+              className="-mx-2 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors hover:bg-surface-2"
+            >
+              <span className={cn("size-2 rounded-full", d.kind === "submission" ? "bg-lost" : d.kind === "reminder" ? "bg-soon" : "bg-info")} />
+              <span className="min-w-0">
+                <span className="block truncate">{titles.get(d.opportunity_id) ?? "A tracked tender"}</span>
+                <span className="block text-xs text-muted">
+                  {KIND_WORD[d.kind] ?? "Deadline"}, {date(d.due_at, { year: undefined })}
+                </span>
+              </span>
+              <span className={cn("tabular font-mono text-xs", d.kind === "submission" ? "text-soon" : "text-muted")}>{countdown(d.due_at, now)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

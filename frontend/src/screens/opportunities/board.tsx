@@ -144,7 +144,7 @@ export function OpportunityBoard() {
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
           <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0">
-            <div className="grid min-w-[72rem] grid-cols-6 gap-3">
+            <div data-wren-target="pipeline-board" data-perch-x="120" className="grid min-w-[72rem] grid-cols-6 items-start gap-3">
               {STATUSES.map((status) => {
                 const cards = items.filter((o) => o.status === status);
                 const allowed = dragging ? dragging.status === status || dragging.allowed_transitions.includes(status) : true;
@@ -194,7 +194,7 @@ function Column({
       ref={setNodeRef}
       aria-label={`${STATUS_LABEL[status]}: ${count}`}
       className={cn(
-        "flex min-h-[24rem] flex-col rounded-xl border border-hairline bg-surface/40 p-2 transition-[opacity,border-color,background-color] duration-200",
+        "flex min-h-48 flex-col rounded-xl border border-hairline bg-surface/40 p-2 transition-[opacity,border-color,background-color] duration-200",
         dimmed && "opacity-35",
         isOver && !disabled && "border-accent/60 bg-accent-soft",
       )}
@@ -243,9 +243,9 @@ function Card({
                 <DropdownMenu.Trigger asChild>
                   <button
                     aria-label={`Move ${opportunity.notice_title}`}
-                    className="grid size-7 place-items-center rounded-md text-faint hover:bg-surface-3 hover:text-text"
+                    className="flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-surface-3 hover:text-text"
                   >
-                    <ArrowRightLeft className="size-3.5" />
+                    <ArrowRightLeft className="size-3.5" /> Move
                   </button>
                 </DropdownMenu.Trigger>
                 <MenuContent align="end">
@@ -271,16 +271,13 @@ function CardBody({ opportunity, handle, lifted }: { opportunity: Opportunity; h
   const flagged = Boolean(opportunity.flags?.notice_changed) || Boolean(opportunity.flags?.outcome_needs_review);
   return (
     <article className={cn("panel group p-3", lifted && "rotate-[1.5deg] shadow-2xl ring-1 ring-accent/40")}>
-      <div className="flex items-start gap-2">
-        <Link
-          to="/o/$orgId/opportunities/$oppId"
-          params={{ orgId: org.id, oppId: opportunity.id }}
-          className="line-clamp-3 flex-1 text-sm leading-snug font-medium hover:text-accent"
-        >
-          {opportunity.notice_title || "Untitled notice"}
-        </Link>
-        {handle}
-      </div>
+      <Link
+        to="/o/$orgId/opportunities/$oppId"
+        params={{ orgId: org.id, oppId: opportunity.id }}
+        className="line-clamp-3 text-sm leading-snug font-medium hover:text-accent"
+      >
+        {opportunity.notice_title || "Untitled notice"}
+      </Link>
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         {opportunity.next_deadline ? <DeadlineChip at={opportunity.next_deadline.due_at} /> : null}
         {opportunity.pending_proposals > 0 ? (
@@ -290,6 +287,7 @@ function CardBody({ opportunity, handle, lifted }: { opportunity: Opportunity; h
           </Badge>
         ) : null}
         {flagged ? <Badge tone="soon">Check</Badge> : null}
+        {handle ? <div className="-mr-1.5 -mb-1 ml-auto">{handle}</div> : null}
       </div>
     </article>
   );

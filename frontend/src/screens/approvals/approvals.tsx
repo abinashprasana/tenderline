@@ -6,7 +6,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { toast } from "sonner";
 
 import { api, newIdempotencyKey, unwrap } from "@/api/client";
-import { ApiError, describeError } from "@/api/errors";
+import { describeError } from "@/api/errors";
 import {
   useApprove,
   useEditApprove,
@@ -203,7 +203,7 @@ export function Approvals() {
             </div>
           ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(16rem,21rem)_1fr]">
-          <nav aria-label="Notices waiting for a decision" className={cn("panel h-fit overflow-hidden lg:sticky lg:top-20", !showList && "max-lg:hidden")}>
+          <nav aria-label="Notices waiting for a decision" data-wren-target="decide-list" className={cn("panel h-fit overflow-hidden lg:sticky lg:top-20", !showList && "max-lg:hidden")}>
             <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5 text-xs text-faint">
               <span>Best fit first</span>
               <span className="hidden items-center gap-1 lg:flex">
@@ -375,7 +375,8 @@ function NoticeDecision({ group, onBack, onDecided }: { group: NoticeGroup; onBa
         </div>
 
         {assessment ? (
-          <div className="mt-5 grid gap-4 border-t border-hairline pt-4 xl:grid-cols-2">
+          <div className="mt-5 grid gap-4 rounded-xl border border-agent/25 bg-agent-soft p-4 xl:grid-cols-2">
+            <p className="text-xs font-medium text-agent xl:col-span-2">AI assessment · Review alongside the source notice</p>
             <AgentList title="Why it may fit" items={assessment.reasons} icon={<Check className="size-3.5 text-won" />} />
             <AgentList title="Risks" items={assessment.risks} icon={<AlertTriangle className="size-3.5 text-soon" />} />
           </div>
@@ -480,7 +481,7 @@ const ActionCard = forwardRef<
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const errors = validatePayload(proposal.action_type, draft);
-  const serverErrors = editApprove.error instanceof ApiError && editApprove.error.code === "invalid_payload";
+  const serverErrors = Boolean(editApprove.error);
   const busy = approve.isPending || editApprove.isPending || reject.isPending;
 
   const doApprove = async () => {
@@ -532,6 +533,7 @@ const ActionCard = forwardRef<
         )}
       </div>
 
+      {approve.error ? <p role="alert" className="mt-3 text-sm text-lost">{describeError(approve.error)}</p> : null}
       <Dialog
         open={dialog === "edit"}
         onOpenChange={(open) => setDialog(open ? "edit" : null)}
@@ -547,7 +549,11 @@ const ActionCard = forwardRef<
               pending={editApprove.isPending}
               disabled={Object.keys(errors).length > 0}
               onClick={async () => {
-                await editApprove.mutateAsync({ id: proposal.id, payload: draft, comment });
+                try {
+                  await editApprove.mutateAsync({ id: proposal.id, payload: draft, comment });
+                } catch {
+                  return; // the error is shown in the dialog and the draft is kept
+                }
                 setDialog(null);
                 onDecided(proposal.id);
               }}
@@ -579,7 +585,11 @@ const ActionCard = forwardRef<
               pending={reject.isPending}
               disabled={reason.trim().length < 3}
               onClick={async () => {
-                await reject.mutateAsync({ id: proposal.id, reason: reason.trim() });
+                try {
+                  await reject.mutateAsync({ id: proposal.id, reason: reason.trim() });
+                } catch {
+                  return; // the error is shown in the dialog and the draft is kept
+                }
                 setDialog(null);
                 toast("Rejected. Nothing was run.");
               }}
@@ -589,6 +599,7 @@ const ActionCard = forwardRef<
           </>
         }
       >
+        {reject.error ? <p role="alert" className="mb-3 text-sm text-lost">{describeError(reject.error)}</p> : null}
         <Field label="Reason" hint="At least 3 characters.">
           {(props) => <Textarea {...props} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} autoFocus />}
         </Field>
@@ -706,6 +717,7 @@ function BulkBar({ group, canDecide, onDecided }: { group: NoticeGroup; canDecid
   const [results, setResults] = useState<BulkResult[] | null>(null);
 
   const run = useMutation({
+    mutationKey: ["bulk-decide"],
     meta: { quiet: true },
     mutationFn: async (mode: "approve" | "reject") => {
       const out: BulkResult[] = [];
@@ -751,7 +763,7 @@ function BulkBar({ group, canDecide, onDecided }: { group: NoticeGroup; canDecid
         <span className="font-medium">Decide this notice in one go</span>
         <span className="block text-muted">{plural(group.proposals.length, "suggested action")}. Or go through them below.</span>
       </p>
-      <Button variant="primary" onClick={() => setDialog("approve")}>
+      <Button variant="primary" data-wren-target="approve-all" onClick={() => setDialog("approve")}>
         <Check className="size-4" /> Approve all ({group.proposals.length})
       </Button>
       <Button onClick={() => setDialog("reject")}>

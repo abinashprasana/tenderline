@@ -70,6 +70,7 @@ export function Deadlines() {
         actions={
           upcoming.length ? (
             <Button
+              data-wren-target="export-calendar"
               size="sm"
               onClick={() => {
                 downloadCalendar(
@@ -95,16 +96,16 @@ export function Deadlines() {
         <ErrorState error={deadlines.error} onRetry={() => void deadlines.refetch()} />
       ) : upcoming.length === 0 ? (
         <div className="panel">
-          <EmptyState illustration={<EmptyCalendar />} title="Nothing scheduled">
+          <EmptyState illustration={<EmptyCalendar />} title="Nothing scheduled" action={<Button asChild><Link to="/o/$orgId/opportunities" params={{ orgId: org.id }}>Open your pipeline</Link></Button>}>
             Deadlines appear when you track a tender in your pipeline. Reminders are added from the tender's page.
           </EmptyState>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="panel p-2 sm:p-4" aria-label="Agenda">
             {selectedDay ? (
               <div className="flex items-center justify-between px-2 pb-2">
-                <p className="text-sm text-muted">Showing one day</p>
+                <p className="text-sm text-muted">{dayHeading(`${selectedDay}T12:00:00`, now)}</p>
                 <Button size="sm" variant="ghost" onClick={() => setSelectedDay(null)}>
                   Show all
                 </Button>
@@ -135,9 +136,9 @@ export function Deadlines() {
                         <Link
                           to="/o/$orgId/opportunities/$oppId"
                           params={{ orgId: org.id, oppId: d.opportunity_id }}
-                          className="flex flex-wrap items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-surface-2"
+                          className="flex min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-surface-2"
                         >
-                          <span className="tabular w-12 font-mono text-xs text-muted">
+                          <span className="tabular w-12 shrink-0 font-mono text-xs text-muted">
                             {new Intl.DateTimeFormat("en-IE", { hour: "2-digit", minute: "2-digit" }).format(new Date(d.due_at))}
                           </span>
                           <Badge tone={d.kind === "submission" ? "lost" : d.kind === "reminder" ? "soon" : "info"}>{humanise(d.kind)}</Badge>
