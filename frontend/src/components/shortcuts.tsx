@@ -12,6 +12,7 @@ const GROUPS: { title: string; rows: { keys: string[]; does: string }[] }[] = [
       { keys: ["g", "d"], does: "Go to To decide" },
       { keys: ["g", "p"], does: "Go to Pipeline" },
       { keys: ["?"], does: "Show this list" },
+      { keys: ["w"], does: "Open Wren, the guide" },
     ],
   },
   {

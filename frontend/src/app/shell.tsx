@@ -28,6 +28,7 @@ import { useMyOrgs, useRuns, useSummary } from "@/api/hooks";
 import { setSession } from "@/auth/session";
 import { useSession } from "@/auth/use-session";
 import { Ago } from "@/components/deadline-chip";
+import { TenderlineGuide } from "@/components/tenderline-guide";
 import { Logo } from "@/components/logo";
 import { Shortcuts } from "@/components/shortcuts";
 import { Badge, STATUS_TONE } from "@/components/ui/badge";
@@ -35,7 +36,8 @@ import { Button } from "@/components/ui/button";
 import { Kbd, Tooltip } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
 import { useNow } from "@/lib/use-now";
-import { RUN_STATUS, SCREEN } from "@/lib/labels";
+import { greeting } from "@/lib/format";
+import { plural, RUN_STATUS, SCREEN } from "@/lib/labels";
 import { ROLE_LABEL, type Role } from "@/lib/permissions";
 import { setReducedTransparency, setTheme, useReducedTransparency, useTheme } from "@/lib/theme";
 
@@ -82,6 +84,19 @@ export const NAV: { group: string; items: NavItem[] }[] = [
 
 /** The four screens people use every day, for the bar at the bottom of narrow windows. */
 const BOTTOM = NAV[0]!.items;
+
+/** What Wren says on Today: one real fact, or nothing while the summary is loading or failed. */
+function wrenGreeting(summary: { notices_awaiting_decision: number; deadlines_next_7_days: number } | undefined): string | undefined {
+  if (!summary) return undefined;
+  const hello = greeting();
+  if (summary.notices_awaiting_decision > 0) {
+    return `${hello}! ${plural(summary.notices_awaiting_decision, "notice is", "notices are")} waiting for your decision.`;
+  }
+  if (summary.deadlines_next_7_days > 0) {
+    return `${hello}! ${plural(summary.deadlines_next_7_days, "deadline")} in the next 7 days.`;
+  }
+  return `${hello}! Nothing is waiting for you. I'll keep watch.`;
+}
 
 export function Shell() {
   const org = useOrg();
@@ -148,7 +163,7 @@ export function Shell() {
               onClick={() => setDrawerOpen(false)}
             />
             <motion.aside
-              className="glass fixed inset-y-2 left-2 z-50 flex w-[min(17rem,calc(100vw-1rem))] flex-col rounded-2xl lg:hidden"
+              className="glass glass-strong fixed inset-y-2 left-2 z-50 flex w-[min(17rem,calc(100vw-1rem))] flex-col rounded-2xl lg:hidden"
               initial={{ x: "-105%" }}
               animate={{ x: 0 }}
               exit={{ x: "-105%" }}
@@ -170,6 +185,7 @@ export function Shell() {
           </motion.div>
         </main>
       </div>
+      <TenderlineGuide orgId={org.id} toDecide={summary.data?.notices_awaiting_decision} greeting={wrenGreeting(summary.data)} onShortcuts={() => setShortcutsOpen(true)} />
       <BottomBar orgId={org.id} toDecide={toDecide} onMore={() => setDrawerOpen(true)} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <Shortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} onGo={go} />
@@ -213,7 +229,7 @@ function Sidebar({ orgId, place }: { orgId: string; place: "side" | "drawer" }) 
                     {matchRoute({ to: item.to, params: { orgId }, fuzzy: !item.exact }) ? (
                       <motion.span
                         layoutId={`nav-active-${place}`}
-                        className="absolute inset-0 rounded-lg bg-accent-soft"
+                        className="absolute inset-0 rounded-lg border-l-2 border-accent bg-accent-soft"
                         transition={{ type: "spring", stiffness: 520, damping: 42 }}
                         aria-hidden
                       />
@@ -399,7 +415,7 @@ export function MenuContent({ children, align }: { children: ReactNode; align: "
       <DropdownMenu.Content
         align={align}
         sideOffset={6}
-        className="glass z-[60] min-w-56 rounded-xl p-1 data-[state=open]:animate-in"
+        className="glass glass-strong z-[60] min-w-56 rounded-xl p-1 data-[state=open]:animate-in"
       >
         {children}
       </DropdownMenu.Content>

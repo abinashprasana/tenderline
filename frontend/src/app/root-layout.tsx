@@ -23,8 +23,10 @@ export function RootLayout() {
         <Toaster
           theme={theme}
           position="bottom-right"
+          offset={{ bottom: 84, right: 20 }}
+          mobileOffset={{ bottom: 136 }}
           closeButton
-          toastOptions={{ classNames: { toast: "glass !rounded-xl !text-text !border-hairline" } }}
+          toastOptions={{ classNames: { toast: "glass glass-strong !rounded-xl !text-text !border-hairline" } }}
         />
       </Tooltip.Provider>
     </MotionConfig>

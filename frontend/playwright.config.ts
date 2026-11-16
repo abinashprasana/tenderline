@@ -23,6 +23,8 @@ export default defineConfig({
     trace: "retain-on-failure",
     viewport: { width: 1440, height: 900 },
     ...(chrome ? { channel: "chrome" } : {}),
+    // Headless browsers have no GPU: allow software WebGL so the 3D owl can be tested.
+    launchOptions: { args: ["--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, ...(chrome ? { channel: "chrome" } : {}) } }],
 });

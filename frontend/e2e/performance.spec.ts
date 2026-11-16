@@ -41,5 +41,7 @@ test("landing page stays inside its performance budget", async ({ browser, page:
   expect(metrics.lcp).toBeLessThan(2500);
   expect(metrics.cls).toBeLessThan(0.1);
   expect(initialJs).toBeLessThan(250 * 1024);
+  // The 3D owl (three.js and its model) belongs to the signed-in app only.
+  expect(scripts.filter((s) => /\/stage-[\w-]+\.js/.test(s.url))).toEqual([]);
   await context.close();
 });
