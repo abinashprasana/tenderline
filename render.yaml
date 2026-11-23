@@ -1,0 +1,64 @@
+# Free, no-card Render deployment: one web service (API plus the web app on one origin) and a free Postgres.
+# Create it from the render-deploy branch: Dashboard > New > Blueprint. Walkthrough and limits: docs/render.md.
+# Nothing here is secret. The two values marked sync: false are asked for in the dashboard and never stored in git.
+
+services:
+  - type: web
+    name: tenderline
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /healthz # cheap and public; it does not touch the database
+    envVars:
+      - key: ENV
+        value: prod
+      - key: JWT_SECRET
+        generateValue: true
+      # The password of the app role that migration 0002 creates. The entrypoint builds APP_DATABASE_URL from it.
+      - key: APP_DB_PASSWORD
+        generateValue: true
+      # To use another database (for example Neon) instead, delete fromDatabase and use sync: false here.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tenderline-db
+          property: connectionString
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      # APP_VERSION (from RENDER_GIT_COMMIT) and GITHUB_REDIRECT_URI (from RENDER_EXTERNAL_URL) are filled in by
+      # scripts/render_entrypoint.py. Set either here to override.
+
+      - key: OTEL_ENABLED
+        value: "false"
+      # The deterministic fake assistant needs no key. For real suggestions, set this to "groq,fake" and add a
+      # GROQ_API_KEY secret in the dashboard (Groq has a free tier).
+      - key: LLM_PROVIDER_CHAIN
+        value: fake
+
+      # Sized for 512 MB. The defaults (10 + 20 connections) are for a normal host.
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: DB_POOL_SIZE
+        value: "3"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      - key: DBOS_SYS_DB_POOL_SIZE
+        value: "5"
+      - key: ENRICH_QUEUE_CONCURRENCY
+        value: "2"
+      - key: QUALIFY_QUEUE_CONCURRENCY
+        value: "1"
+      # Only for a pooled connection (Neon's -pooler host), which cannot carry LISTEN/NOTIFY. Decide before the
+      # first start: DBOS cannot change it once its tables exist. The Render database does not need it.
+      # - key: DBOS_USE_LISTEN_NOTIFY
+      #   value: "false"
+
+databases:
+  - name: tenderline-db
+    plan: free # expires 30 days after creation, see docs/render.md
+    region: frankfurt
+    databaseName: tenderline
+    user: tenderline
