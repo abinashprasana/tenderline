@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     app_database_url: str = "postgresql+psycopg://tenderline_app:tenderline_app@localhost:5433/tenderline"
     app_db_password: str = "tenderline_app"
     dbos_system_database_url: str = "postgresql://tenderline:tenderline@localhost:5433/tenderline_dbos"
+    # Connection pool of the app database. The defaults suit a normal host; a 512 MB host wants a few connections.
+    db_pool_size: int = Field(default=10, ge=1)
+    db_max_overflow: int = Field(default=20, ge=0)
+    # DBOS options for hosts that cannot give it the defaults. Left unset, DBOS behaves exactly as before.
+    dbos_use_listen_notify: bool = True  # False = poll instead of LISTEN/NOTIFY (needed behind a transaction pooler)
+    dbos_sys_db_pool_size: int | None = Field(default=None, ge=1)  # None = DBOS default
+
+    # Serve the built web app from this directory, on the same origin as the API. Empty (the default) = the API
+    # only; Caddy serves the web app in the compose stacks. See docs/render.md.
+    serve_web_dir: str = ""
 
     # Auth
     jwt_secret: str = "dev-only-change-me-dev-only-change-me"

@@ -21,7 +21,9 @@ from tenderline.config import get_settings
 @lru_cache
 def get_engine() -> Engine:
     s = get_settings()
-    return create_engine(s.app_database_url, pool_size=10, max_overflow=20, pool_pre_ping=True)
+    return create_engine(
+        s.app_database_url, pool_size=s.db_pool_size, max_overflow=s.db_max_overflow, pool_pre_ping=True
+    )
 
 
 @lru_cache

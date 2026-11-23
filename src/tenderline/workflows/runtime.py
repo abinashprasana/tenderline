@@ -29,13 +29,19 @@ def application_version() -> str:
 
 def dbos_config() -> DBOSConfig:
     settings = get_settings()
-    return {
+    config: DBOSConfig = {
         "name": "tenderline",
         "system_database_url": settings.dbos_system_database_url,
         "application_version": application_version(),
         "log_level": settings.log_level,
         "enable_otlp": False,  # traces are exported by our own OpenTelemetry setup
     }
+    # Both are only set when asked for, so the default configuration is unchanged.
+    if not settings.dbos_use_listen_notify:
+        config["use_listen_notify"] = False
+    if settings.dbos_sys_db_pool_size is not None:
+        config["sys_db_pool_size"] = settings.dbos_sys_db_pool_size
+    return config
 
 
 def is_running() -> bool:

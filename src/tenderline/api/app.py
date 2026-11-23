@@ -136,6 +136,10 @@ def create_app() -> FastAPI:
     from tenderline.api.routers import register_routers
 
     register_routers(app)
+    if web_dir := get_settings().serve_web_dir:  # off by default; Caddy serves the web app in the compose stacks
+        from tenderline.api.webapp import mount_web
+
+        mount_web(app, web_dir)
     return app
 
 
