@@ -19,7 +19,7 @@ All of it is off by default, so the compose stacks and the tests behave as befor
 
 **Render web service** ([docs](https://render.com/docs/free))
 - Spins down after 15 minutes without a request and takes about a minute to wake. While it sleeps nothing runs, including the daily ingestion.
-- 750 free instance hours per workspace per month. One service running all month uses about 744, so this is the only service you can keep awake.
+- 750 free instance hours per **workspace** per month, shared by every free web service in it. One service awake all month uses about 744, and when the hours run out Render suspends all of the workspace's free services until the next month.
 - No shell, no persistent disk, 512 MB RAM.
 
 **Render Postgres** (free)
@@ -73,10 +73,13 @@ Postgres 16 lets a role with CREATEROLE create `tenderline_app` but not alter it
 database server. So give each Tenderline database its own server. A second one on the same server fails in migration 0002,
 which finds the role and tries to alter it; the checker shows this as the ALTER ROLE warning.
 
-## Keep it awake
+## Keep it awake (optional)
 
-`/healthz` is public and does not touch the database. Ping it every 10 minutes from [cron-job.org](https://cron-job.org)
-(free, no card):
+Check first that nothing else free in the workspace needs the hours: a service kept awake all month leaves about 6 of the
+750. Without a ping the service just sleeps and wakes in about a minute for the next visitor, which is fine for a demo.
+
+`/healthz` is public and does not touch the database. To keep it awake, ping it every 10 minutes from
+[cron-job.org](https://cron-job.org) (free, no card), ideally only in the hours you need:
 
 1. Create a job with the URL `https://<your-service>.onrender.com/healthz`.
 2. Schedule: every 10 minutes. Request method GET. Expected status 200.
@@ -90,8 +93,9 @@ the last success minus 7 days, and `tenderline ingest` runs it on demand.
 1. **GitHub OAuth app.** GitHub, Settings, Developer settings, OAuth Apps, New. Homepage URL `https://<service>.onrender.com`,
    callback URL `https://<service>.onrender.com/auth/callback`. Keep the client id and generate a client secret.
    Sign-in is GitHub only because `ENV=prod` turns off the local sign-in.
-2. **Render service.** Dashboard, New, Blueprint, pick this repository and the `render-deploy` branch, and set Blueprint Path
-   to `render/render.yaml`. Enter `GITHUB_CLIENT_ID`
+2. **Render service.** Dashboard, New, Blueprint. Use the public repository URL (no GitHub permission needed, but then
+   there is no auto-deploy: use Manual sync to pick up new commits), the `render-deploy` branch, and Blueprint Path
+   `render/render.yaml`. Enter `GITHUB_CLIENT_ID`
    and `GITHUB_CLIENT_SECRET` when asked. The first build takes several minutes on the free plan.
 3. If the service URL has a suffix (`tenderline-ab12.onrender.com`), use that exact URL in the GitHub OAuth app.
 4. **cron-job.org.** As above.
