@@ -1,8 +1,8 @@
 # Deploying to Render (free, no card)
 
 One free Render web service runs the API and serves the web app on the same origin, so there is no proxy and no
-CORS. Everything is in extra files: `Dockerfile.render`, `render.yaml`, `scripts/render_entrypoint.py` and
-`scripts/check_db_privileges.py`. The Oracle setup (`terraform/`, `docker-compose*.yml`, Caddy) is untouched.
+CORS. Everything for it is in this folder: `Dockerfile`, `render.yaml`, `entrypoint.py` and `check_db_privileges.py`.
+The Oracle setup (`terraform/`, `docker-compose*.yml`, Caddy) is untouched.
 
 ## What changed in the app
 
@@ -10,7 +10,7 @@ All of it is off by default, so the compose stacks and the tests behave as befor
 
 | Variable | Default | Effect |
 |:--|:--|:--|
-| `SERVE_WEB_DIR` | empty | The API serves the built web app from this folder, with the routing of `frontend/caddy/tenderline.caddy`. `Dockerfile.render` sets it. |
+| `SERVE_WEB_DIR` | empty | The API serves the built web app from this folder, with the routing of `frontend/caddy/tenderline.caddy`. `render/Dockerfile` sets it. |
 | `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | 10, 20 | Connection pool of the app database. `render.yaml` uses 3 and 2. |
 | `DBOS_SYS_DB_POOL_SIZE` | DBOS default | Pool of DBOS's own connections. `render.yaml` uses 5. |
 | `DBOS_USE_LISTEN_NOTIFY` | true | `false` makes DBOS poll instead of using LISTEN/NOTIFY. Only for a pooled database connection. |
@@ -40,7 +40,7 @@ recreate: notices are public and come back with the next ingestion.
 
 ## How it starts
 
-`render_entrypoint.py` runs first. From `DATABASE_URL` it builds the three URLs Tenderline wants (owner, `tenderline_app`
+`entrypoint.py` runs first. From `DATABASE_URL` it builds the three URLs Tenderline wants (owner, `tenderline_app`
 with `APP_DB_PASSWORD`, and DBOS in the same database, in its own `dbos` schema). It sets `APP_VERSION` from
 `RENDER_GIT_COMMIT` so DBOS resumes work after each deploy, and `GITHUB_REDIRECT_URI` from `RENDER_EXTERNAL_URL`.
 Anything you set by hand wins. Then `tenderline serve` migrates and starts the API and the DBOS workers in one process.
@@ -63,7 +63,7 @@ Migration 0002 creates the `tenderline_app` role with `CREATE ROLE ... NOBYPASSR
 that. With the owner URL (from your computer; the password is never printed):
 
 ```bash
-uv run python scripts/check_db_privileges.py "postgresql://user:password@host/dbname"
+uv run python render/check_db_privileges.py "postgresql://user:password@host/dbname"
 ```
 
 It also logs in as a throwaway role to prove row-level security hides other organisations' rows, and tests LISTEN/NOTIFY.
@@ -90,7 +90,8 @@ the last success minus 7 days, and `tenderline ingest` runs it on demand.
 1. **GitHub OAuth app.** GitHub, Settings, Developer settings, OAuth Apps, New. Homepage URL `https://<service>.onrender.com`,
    callback URL `https://<service>.onrender.com/auth/callback`. Keep the client id and generate a client secret.
    Sign-in is GitHub only because `ENV=prod` turns off the local sign-in.
-2. **Render service.** Dashboard, New, Blueprint, pick this repository and the `render-deploy` branch. Enter `GITHUB_CLIENT_ID`
+2. **Render service.** Dashboard, New, Blueprint, pick this repository and the `render-deploy` branch, and set Blueprint Path
+   to `render/render.yaml`. Enter `GITHUB_CLIENT_ID`
    and `GITHUB_CLIENT_SECRET` when asked. The first build takes several minutes on the free plan.
 3. If the service URL has a suffix (`tenderline-ab12.onrender.com`), use that exact URL in the GitHub OAuth app.
 4. **cron-job.org.** As above.

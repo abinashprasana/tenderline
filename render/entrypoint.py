@@ -1,4 +1,4 @@
-"""Container entrypoint for the Render deployment (see docs/render.md).
+"""Container entrypoint for the Render deployment (see render/README.md).
 
 Render hands the service one database URL and a few RENDER_* variables. Tenderline wants three database URLs
 (table owner, the RLS-subject app role, and DBOS's system database), an application version and an OAuth

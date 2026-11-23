@@ -1,4 +1,4 @@
-"""scripts/render_entrypoint.py turns Render's variables into the ones Tenderline reads."""
+"""render/entrypoint.py turns Render's variables into the ones Tenderline reads."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.engine import make_url
 
 SPEC = importlib.util.spec_from_file_location(
-    "render_entrypoint", Path(__file__).resolve().parents[2] / "scripts" / "render_entrypoint.py"
+    "render_entrypoint", Path(__file__).resolve().parents[2] / "render" / "entrypoint.py"
 )
 assert SPEC and SPEC.loader
 entry = importlib.util.module_from_spec(SPEC)

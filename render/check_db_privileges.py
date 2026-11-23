@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Can this Postgres database host Tenderline? Run it before deploying to a managed database.
 
-    uv run python scripts/check_db_privileges.py "postgresql://user:password@host/dbname"
-    DATABASE_URL=... uv run python scripts/check_db_privileges.py
+    uv run python render/check_db_privileges.py "postgresql://user:password@host/dbname"
+    DATABASE_URL=... uv run python render/check_db_privileges.py
 
 Use the owner role's URL (the one that will run the migrations). The password is never printed.
 

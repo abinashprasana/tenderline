@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     dbos_sys_db_pool_size: int | None = Field(default=None, ge=1)  # None = DBOS default
 
     # Serve the built web app from this directory, on the same origin as the API. Empty (the default) = the API
-    # only; Caddy serves the web app in the compose stacks. See docs/render.md.
+    # only; Caddy serves the web app in the compose stacks. See render/README.md.
     serve_web_dir: str = ""
 
     # Auth

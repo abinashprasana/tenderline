@@ -1,5 +1,6 @@
 # Free, no-card Render deployment: one web service (API plus the web app on one origin) and a free Postgres.
-# Create it from the render-deploy branch: Dashboard > New > Blueprint. Walkthrough and limits: docs/render.md.
+# Create it from the render-deploy branch: Dashboard > New > Blueprint, with Blueprint Path render/render.yaml.
+# Walkthrough and limits: render/README.md.
 # Nothing here is secret. The two values marked sync: false are asked for in the dashboard and never stored in git.
 
 services:
@@ -8,7 +9,7 @@ services:
     runtime: docker
     plan: free
     region: frankfurt
-    dockerfilePath: ./Dockerfile.render
+    dockerfilePath: ./render/Dockerfile
     dockerContext: .
     healthCheckPath: /healthz # cheap and public; it does not touch the database
     envVars:
@@ -29,7 +30,7 @@ services:
       - key: GITHUB_CLIENT_SECRET
         sync: false
       # APP_VERSION (from RENDER_GIT_COMMIT) and GITHUB_REDIRECT_URI (from RENDER_EXTERNAL_URL) are filled in by
-      # scripts/render_entrypoint.py. Set either here to override.
+      # render/entrypoint.py. Set either here to override.
 
       - key: OTEL_ENABLED
         value: "false"
@@ -58,7 +59,7 @@ services:
 
 databases:
   - name: tenderline-db
-    plan: free # expires 30 days after creation, see docs/render.md
+    plan: free # expires 30 days after creation, see render/README.md
     region: frankfurt
     databaseName: tenderline
     user: tenderline

@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 # One container for hosts with a single free service (Render): the API also serves the built web app, on the same
-# origin, so there is no proxy and no CORS (SERVE_WEB_DIR, see docs/render.md). The compose stacks and the original
+# origin, so there is no proxy and no CORS (SERVE_WEB_DIR, see render/README.md). The compose stacks and the original
 # Dockerfile are untouched. Build from the repository root:
-#   docker build -f Dockerfile.render -t tenderline-render .
+#   docker build -f render/Dockerfile -t tenderline-render .
 
 # ---- web app: the same build as frontend/Dockerfile
 FROM node:24-alpine AS web
@@ -37,11 +37,11 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app alembic.ini ./
 COPY --chown=app:app data ./data
-COPY --chown=app:app scripts/render_entrypoint.py ./render_entrypoint.py
+COPY --chown=app:app render/entrypoint.py ./entrypoint.py
 COPY --from=web --chown=app:app /web/dist ./web
 USER app
 # Render sets PORT (default 10000) and checks the path in render.yaml; this check is for running it locally.
 EXPOSE 10000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=5 \
   CMD python -c "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT', '10000'), timeout=4).status == 200 else 1)"
-CMD ["python", "/app/render_entrypoint.py"]
+CMD ["python", "/app/entrypoint.py"]
