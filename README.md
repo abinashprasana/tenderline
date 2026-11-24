@@ -4,6 +4,8 @@
 
 **A multi-tenant app for small Irish companies bidding on public contracts. It finds the tenders that fit, has an AI assistant suggest what to do, and does nothing until a person says yes.**
 
+[![Live demo on Render](https://img.shields.io/badge/%E2%96%B2%20LIVE%20DEMO-RENDER-000000?style=for-the-badge&labelColor=555555)](https://tenderline.onrender.com)
+<br/>
 [![CI](https://github.com/abinashprasana/tenderline/actions/workflows/ci.yml/badge.svg)](https://github.com/abinashprasana/tenderline/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-REST%20API-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -24,6 +26,14 @@
 *TED (Tenders Electronic Daily) · eTenders open data · human-in-the-loop AI · Oracle Cloud Always Free*
 
 </div>
+
+---
+
+## 🌐 Live demo
+
+**[tenderline.onrender.com](https://tenderline.onrender.com)** runs on Render's free plan. The landing page and its try-a-decision example need no account. The app itself asks you to sign in with GitHub, with read-only access to your profile and email address.
+
+The free server sleeps after 15 minutes without visitors, so the first visit can take up to a minute. The demo database may not have collected any notices yet, in which case the lists inside the app are empty. It expires on 23 December 2026.
 
 ---
 
@@ -308,6 +318,7 @@ scripts/loadtest.sh
 | ☁️ `terraform/` | Oracle Cloud Always Free: VCN, firewall, one Ampere A1 VM (2 OCPU / 12 GB), backup bucket. Validated in CI, never applied for you. |
 | 🚀 `docker-compose.prod.yml` | Caddy with automatic TLS serving the web app and proxying the API, Postgres, nightly backups. |
 | 🔄 `.github/workflows/ci.yml` | Lint, types, tests, drift checks, Playwright, multi-arch API and web images to GHCR, and an SSH deploy that only runs when its secrets exist. |
+| 🌐 [`render/`](https://github.com/abinashprasana/tenderline/tree/render-deploy/render) | A free single-container setup for Render, kept on the `render-deploy` branch. The live demo runs from it. |
 
 The accounts, keys and exact variable names are in **[SETUP.md](SETUP.md)**. Backup and restore: `scripts/backup.sh`, `scripts/restore.sh`.
 
@@ -323,7 +334,7 @@ The accounts, keys and exact variable names are in **[SETUP.md](SETUP.md)**. Bac
 
 **🔑 The session token lives in session storage.** A strict Content-Security-Policy is what protects it. Cookie sessions with CSRF protection would be the upgrade for a large public deployment ([ADR 0006](docs/adr/0006-web-app.md)).
 
-**🔍 Not verified without real credentials:** the Groq, Gemini, Ollama and Langfuse paths, Grafana Cloud export, the OCI apply, the SSH deploy, TLS issuance and a real GitHub OAuth round trip. Their request formats follow each provider's public API and are tested only against mocked HTTP.
+**🔍 Not verified without real credentials:** the Groq, Gemini, Ollama and Langfuse paths, Grafana Cloud export, the OCI apply, the SSH deploy and TLS issuance on the Oracle setup. Their request formats follow each provider's public API and are tested only against mocked HTTP.
 
 ---
 
