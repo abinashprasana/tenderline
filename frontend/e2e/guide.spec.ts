@@ -129,9 +129,13 @@ test("3D Wren stands on the edge of what it shows, never over the text, and fall
   await guide.getByRole("link", { name: /Approve every action/ }).click();
   await expect(guide).toHaveCount(0);
   await settled();
-  const button = (await page.getByRole("button", { name: /^Approve all \(\d\)$/ }).boundingBox())!;
+  const approveAll = page.getByRole("button", { name: /^Approve all \(\d\)$/ });
+  // Wren waits at home while the screen loads, so "perch" can still mean the guide panel: wait for the landing itself.
+  await expect
+    .poll(async () => Math.abs((await feet()).y - (await approveAll.boundingBox())!.y), { timeout: 6_000 })
+    .toBeLessThanOrEqual(8);
+  const button = (await approveAll.boundingBox())!;
   const onButton = await feet();
-  expect(Math.abs(onButton.y - button.y)).toBeLessThanOrEqual(8);
   expect(onButton.x).toBeGreaterThan(button.x);
   expect(onButton.x).toBeLessThan(button.x + button.width);
   await expectAccessible(page, "3D Wren on a control");

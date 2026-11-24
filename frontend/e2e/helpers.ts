@@ -77,6 +77,15 @@ export async function waitForProposals(request: APIRequestContext, account: Acco
 
 /** axe-core with WCAG 2.1 AA rules; any serious or critical finding fails the test. */
 export async function expectAccessible(page: Page, label: string) {
+  // Colours are still moving just after a theme switch or an entrance: judge the finished screen.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   // Soft, so one run reports every screen with a problem instead of stopping at the first.

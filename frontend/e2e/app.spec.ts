@@ -102,7 +102,8 @@ test("decide: approve all, edit then approve, not for us, and a decision made el
   await expect(card).toBeVisible();
   await api(request, account).post(`/agent-proposals/${target.id}/reject`, { reason: "Decided by a colleague" });
   await card.getByRole("button", { name: "Approve", exact: true }).click();
-  await expect(page.getByText("Someone has already decided this proposal")).toBeVisible();
+  // The same message also appears as a notification, so ask for the one on the card.
+  await expect(page.getByRole("alert").filter({ hasText: "Someone has already decided this proposal" })).toBeVisible();
   const after = await (await api(request, account).get(`/agent-proposals/${target.id}`)).json();
   expect(after.status).toBe("rejected");
 
